@@ -1,0 +1,15 @@
+# Build output — `build/` without a leading slash so app/build is caught too.
+build/
+.gradle/
+.cxx/
+.externalNativeBuild/
+/captures
+
+# Machine-specific: points at this machine's Android SDK.
+local.properties
+
+# IDE
+*.iml
+.idea/
+
+.DS_Store

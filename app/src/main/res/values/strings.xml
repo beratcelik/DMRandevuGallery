@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DMRandevu Galeri</string>
+
+    <!-- Login -->
+    <string name="login_title">DMRandevu Galeri</string>
+    <string name="login_server">Sunucu adresi</string>
+    <string name="login_username">Yönetici kullanıcı adı</string>
+    <string name="login_password">Şifre</string>
+    <string name="login_account">Instagram hesabı</string>
+    <string name="login_submit">Giriş Yap</string>
+    <string name="login_failed">Giriş başarısız. Bilgileri kontrol edin.</string>
+    <string name="login_account_not_found">Instagram hesabı bulunamadı</string>
+    <string name="login_network_error">Sunucuya ulaşılamadı</string>
+    <string name="checking_session">Oturum kontrol ediliyor…</string>
+
+    <!-- Gallery -->
+    <string name="loading">Yükleniyor…</string>
+    <string name="empty_gallery">Videolu konuşma bulunamadı</string>
+    <string name="video_expired">Video süresi doldu</string>
+    <string name="end_of_feed">Son müşteriye ulaşıldı</string>
+    <string name="logout">Çıkış</string>
+
+    <!-- Actions -->
+    <string name="download">İndir</string>
+    <string name="downloading">İndiriliyor…</string>
+    <string name="download_done">Galeriye kaydedildi</string>
+    <string name="download_failed">İndirme başarısız</string>
+    <string name="caption">Caption</string>
+    <string name="story">Hikaye</string>
+    <string name="reels">Reels</string>
+    <string name="instagram_missing">Instagram yüklü değil</string>
+    <string name="story_preparing">Hikaye hazırlanıyor…</string>
+    <string name="reels_preparing">Hazırlanıyor…</string>
+    <string name="reels_ready">Video galeriye kaydedildi, caption kopyalandı — Reels\'te videoyu seçip caption\'ı yapıştırın</string>
+    <string name="reels_ready_no_caption">Video galeriye kaydedildi — caption üretilemedi, Reels\'te videoyu seçin</string>
+
+    <!-- Caption sheet -->
+    <string name="caption_title">✨ Instagram Caption</string>
+    <string name="caption_generating">Caption üretiliyor…</string>
+    <string name="caption_failed">Caption üretilemedi</string>
+    <string name="caption_explanation_hint">Videoyu açıklayın (isteğe bağlı)</string>
+    <string name="caption_regenerate">Açıklamayla yeniden üret</string>
+    <string name="caption_share">Instagram\'da paylaş</string>
+    <string name="caption_copied">Caption panoya kopyalandı</string>
+    <string name="caption_copy">Kopyala</string>
+    <string name="share_preparing">Video hazırlanıyor…</string>
+    <string name="share_failed">Paylaşım başarısız</string>
+    <string name="close">Kapat</string>
+</resources>
