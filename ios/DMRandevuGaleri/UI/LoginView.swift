@@ -31,18 +31,18 @@ struct LoginView: View {
                     .foregroundStyle(.white)
                     .padding(.bottom, 12)
 
-                field(Strings.loginServer, text: $model.baseURL)
+                field(Strings.loginServer, text: $model.baseURL, identifier: "loginServer")
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                field(Strings.loginUsername, text: $model.username)
+                field(Strings.loginUsername, text: $model.username, identifier: "loginUsername")
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                field(Strings.loginPassword, text: $model.password, secure: true)
+                field(Strings.loginPassword, text: $model.password, secure: true, identifier: "loginPassword")
 
-                field(Strings.loginAccount, text: $model.igUsername, prefix: "@")
+                field(Strings.loginAccount, text: $model.igUsername, prefix: "@", identifier: "loginAccount")
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
@@ -65,6 +65,7 @@ struct LoginView: View {
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("loginSubmit")
                 .disabled(model.submitting || model.username.isEmpty || model.password.isEmpty)
                 .padding(.top, 12)
             }
@@ -78,7 +79,8 @@ struct LoginView: View {
         _ label: String,
         text: Binding<String>,
         secure: Bool = false,
-        prefix: String? = nil
+        prefix: String? = nil,
+        identifier: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -96,6 +98,7 @@ struct LoginView: View {
                     }
                 }
                 .foregroundStyle(.white)
+                .accessibilityIdentifier(identifier)
                 .onChange(of: text.wrappedValue) { _, _ in model.clearError() }
             }
             .padding(12)

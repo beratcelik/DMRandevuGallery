@@ -32,6 +32,9 @@ struct ConversationPageView: View {
     @State private var holding = false
     @State private var paused = false
 
+    /// The video runs edge to edge; the controls over it must not.
+    @Environment(\.chromeInsets) private var chromeInsets
+
     private let repository = ServiceLocator.repository!
     private let downloader = ServiceLocator.downloader!
 
@@ -56,8 +59,24 @@ struct ConversationPageView: View {
                 // this ZStack, so a press on one of them hit-tests to the control and never
                 // reaches here — which is what keeps holding a button from also running the video
                 // fast, the exact bug the Android build had to fix.
-                .simultaneousGesture(tapGesture)
-                .simultaneousGesture(holdGesture)
+                // A plain tap composes with the scroll views; a DragGesture does not. The first
+                // version paired the long press with `DragGesture(minimumDistance: 0)` to learn
+                // when the finger lifted, and that drag quietly claimed every vertical swipe —
+                // the feed stopped scrolling altogether. `onPressingChanged` reports the lift
+                // without a drag in the way.
+                // `gesture`, not `simultaneousGesture`: a simultaneous tap here recognised at the
+                // same time as the header buttons above it and swallowed their taps, so pressing a
+                // filter toggle only ever paused the video. A plain gesture yields to whatever is
+                // nearer the finger and still composes with the scroll views.
+                .gesture(tapGesture)
+                .onLongPressGesture(
+                    minimumDuration: Self.holdThreshold,
+                    // The touch slop: a finger that travels before the press matures is swiping
+                    // between videos, not asking for fast playback.
+                    maximumDistance: Self.touchSlop,
+                    perform: { holding = true },
+                    onPressingChanged: { pressing in if !pressing { holding = false } }
+                )
 
             scrims
             centreIndicators
@@ -80,7 +99,7 @@ struct ConversationPageView: View {
                             showControls()
                         }
                     )
-                    .padding(.bottom, 92)
+                    .padding(.bottom, 92 + chromeInsets.bottom)
                 }
             }
 
@@ -159,17 +178,6 @@ struct ConversationPageView: View {
         }
     }
 
-    private var holdGesture: some Gesture {
-        // `maximumDistance` is the touch slop: a finger that travels before the press matures is
-        // swiping between videos, not asking for fast playback.
-        LongPressGesture(minimumDuration: Self.holdThreshold, maximumDistance: Self.touchSlop)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { value in
-                if case .second(true, _) = value { holding = true }
-            }
-            .onEnded { _ in holding = false }
-    }
-
     // MARK: - Chrome
 
     /// Scrims: white controls have to stay readable over a bright frame.
@@ -198,8 +206,10 @@ struct ConversationPageView: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 64))
                     .foregroundStyle(.white.opacity(0.75))
+                    .accessibilityIdentifier("pausedIndicator")
             } else if holding {
                 SpeedBadge(speed: Int(Self.holdSpeed))
+                    .accessibilityIdentifier("speedBadge")
             }
         }
         .allowsHitTesting(false)
@@ -207,22 +217,35 @@ struct ConversationPageView: View {
 
     private var header: some View {
         VStack {
-            HStack(alignment: .center) {
+            HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
+                    // A customer handle can be longer than the space beside three toggles. Left
+                    // to itself it pushed them off the row entirely — the face filter disappeared
+                    // — so the name is the part that gives way, and says so with an ellipsis.
                     Text("@\(conversation.clientName)")
                         .font(.headline)
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .accessibilityIdentifier("customerName")
                     // Per-video, so it follows horizontal swipes within the conversation.
                     if let sentAt = formatSentAt(conversation.sentAt(currentIndex)) {
                         Text(sentAt)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.75))
+                            .lineLimit(1)
                     }
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
                 filterToggles
+                    // The toggles are the fixed furniture of this row; whatever is left over is
+                    // the name's.
+                    .fixedSize()
+                    .layoutPriority(1)
             }
             .padding(16)
+            .padding(.top, chromeInsets.top)
             Spacer()
         }
     }
@@ -230,17 +253,24 @@ struct ConversationPageView: View {
     private var filterToggles: some View {
         HStack(spacing: 4) {
             // Up here rather than in the action row below, which is already tight on width.
-            toggle(icon: model.blurFaces ? "drop.fill" : "drop", on: model.blurFaces) {
+            // A face rather than the blur droplet SF Symbols offers: this sits next to a car for
+            // plates, and the pair reads at a glance as "people / vehicles".
+            toggle(
+                icon: model.blurFaces ? "face.smiling.inverse" : "face.smiling",
+                on: model.blurFaces
+            ) {
                 model.setBlurFaces(!model.blurFaces)
                 model.toast = model.blurFaces ? Strings.faceBlurOn : Strings.faceBlurOff
             }
+            .accessibilityIdentifier("toggleFaces")
 
             // Tap switches the filter; holding switches how hard it looks. Tucked behind a long
             // press because it is a knob to set once, not one to reach for daily.
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: "car.fill")
+                    .font(.system(size: Self.toggleGlyph))
                     .foregroundStyle(.white.opacity(model.blurPlates ? 1 : 0.45))
-                    .padding(12)
+                    .frame(width: Self.toggleTouch, height: Self.toggleTouch)
                 if model.fastPlates {
                     // A bolt on the corner for the quicker setting, nothing for the thorough one
                     // — so the icon says which of the two the long press left it on.
@@ -252,6 +282,7 @@ struct ConversationPageView: View {
                 }
             }
             .contentShape(.rect)
+            .accessibilityIdentifier("togglePlates")
             .onTapGesture {
                 model.setBlurPlates(!model.blurPlates)
                 model.toast = model.blurPlates ? Strings.plateBlurOn : Strings.plateBlurOff
@@ -265,6 +296,7 @@ struct ConversationPageView: View {
                 model.setWatermark(!model.watermark)
                 model.toast = model.watermark ? Strings.watermarkOn : Strings.watermarkOff
             }
+            .accessibilityIdentifier("toggleWatermark")
 
             // How many customers are still waiting. The dots below already say how many videos
             // this one has, so the per-video position is not repeated here.
@@ -273,17 +305,26 @@ struct ConversationPageView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .padding(.leading, 4)
+                    .accessibilityIdentifier("remainingCount")
             }
         }
     }
 
+    /// One filter toggle.
+    ///
+    /// A tap gesture on a plain image rather than a `Button`: over a full-screen video that has
+    /// its own tap handling, SwiftUI's arbitration between a button and the gesture underneath is
+    /// not reliably won by the button, and the leftmost toggle lost every tap to the video. This
+    /// is the same construct the plate toggle uses, and it wins consistently.
     private func toggle(icon: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .foregroundStyle(.white.opacity(on ? 1 : 0.45))
-                .padding(12)
-        }
-        .buttonStyle(.plain)
+        Image(systemName: icon)
+            // Left to themselves the glyphs come out at wildly different widths; a fixed size and
+            // a square frame keep the row evenly spaced whatever symbols it holds.
+            .font(.system(size: Self.toggleGlyph))
+            .foregroundStyle(.white.opacity(on ? 1 : 0.45))
+            .frame(width: Self.toggleTouch, height: Self.toggleTouch)
+            .contentShape(.rect)
+            .onTapGesture(perform: action)
     }
 
     private var bottomBar: some View {
@@ -298,18 +339,22 @@ struct ConversationPageView: View {
                                 .frame(width: currentIndex == index ? 8 : 6)
                         }
                     }
+                    .accessibilityIdentifier("mediaDots")
+                    .accessibilityValue("\(conversation.urls.count)")
                 }
                 Spacer()
                 actions
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 24)
+            .padding(.bottom, chromeInsets.bottom)
         }
     }
 
     private var actions: some View {
         HStack(spacing: 2) {
             ActionButton(
+                identifier: "actionDownload",
                 icon: "arrow.down.circle",
                 label: percent(downloading, downloading ? Strings.downloading : Strings.download),
                 busy: downloading,
@@ -318,6 +363,7 @@ struct ConversationPageView: View {
             )
             // Stories carry no caption, so this is a straight hand-off of the video.
             ActionButton(
+                identifier: "actionStory",
                 icon: "plus.circle",
                 label: percent(sharingStory, Strings.story),
                 busy: sharingStory,
@@ -327,6 +373,7 @@ struct ConversationPageView: View {
             // Reels takes the video from the photo library; the caption can only ride the
             // clipboard, so it is generated first and the operator pastes it in the composer.
             ActionButton(
+                identifier: "actionReels",
                 icon: "film",
                 label: percent(sharingReels, Strings.reels),
                 busy: sharingReels,
@@ -334,6 +381,7 @@ struct ConversationPageView: View {
                 action: shareToReels
             )
             ActionButton(
+                identifier: "actionCaption",
                 icon: "sparkles",
                 label: Strings.caption,
                 busy: false,
@@ -509,6 +557,10 @@ struct ConversationPageView: View {
         }
     }
 
+    /// The glyph size shared by every filter toggle, and the square each one sits in.
+    private static let toggleGlyph: CGFloat = 20
+    private static let toggleTouch: CGFloat = 40
+
     /// How long the controls stay up once nothing is happening.
     private static let controlsLinger: Double = 3
 
@@ -542,6 +594,7 @@ private struct CaptionTarget: Identifiable {
 /// under the icon and the busy state replaces the icon rather than adding to the row.
 private struct ActionButton: View {
 
+    let identifier: String
     let icon: String
     let label: String
     let busy: Bool
@@ -571,5 +624,6 @@ private struct ActionButton: View {
         .buttonStyle(.plain)
         .disabled(!enabled || busy)
         .opacity(enabled ? 1 : 0.4)
+        .accessibilityIdentifier(identifier)
     }
 }

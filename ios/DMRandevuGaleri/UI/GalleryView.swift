@@ -9,6 +9,9 @@ struct GalleryView: View {
     @State private var playerManager: PlayerManager?
     @State private var currentKey: String?
 
+    /// Read once the window exists; the controls sit inside these while the video ignores them.
+    @State private var insets = EdgeInsets()
+
     @Environment(\.scenePhase) private var scenePhase
 
     init(igId: String, onSessionLost: @escaping () -> Void) {
@@ -31,9 +34,12 @@ struct GalleryView: View {
             }
 
             ToastView(message: $model.toast)
+                .padding(.bottom, insets.bottom)
         }
         .ignoresSafeArea()
+        .environment(\.chromeInsets, insets)
         .task {
+            insets = ScreenInsets.current
             if playerManager == nil { playerManager = makePlayerManager() }
             await model.loadMore(initial: true)
         }

@@ -27,10 +27,13 @@ final class PlayerManager {
     /// Which slot is on screen. The other one is only pre-buffering and stays unfiltered.
     private var visibleSlot = -1
 
-    private var watermarkHandle: String?
+    /// Shared with the composition running on each item, so flipping the watermark never touches
+    /// the composition itself.
+    private let watermarkSwitch = WatermarkSwitch()
 
-    /// What each slot's picture was last filtered with, so it is only rebuilt when it changes.
-    private var slotWatermark = [String?](repeating: nil, count: poolSize)
+    /// Which slots already have the preview composition installed on their current item. Once one
+    /// is on it stays on — taking it off again would cost the same stall putting it on does.
+    private var slotFiltered = [Bool](repeating: false, count: poolSize)
 
     private var statusObservations = [NSKeyValueObservation?](repeating: nil, count: poolSize)
     private var loopObserver: NSObjectProtocol?
@@ -118,7 +121,7 @@ final class PlayerManager {
     /// over the player in SwiftUI: a preview that is a re-implementation is a preview that can
     /// quietly stop matching what actually gets written to the file.
     func setWatermark(_ handle: String?) {
-        watermarkHandle = handle
+        watermarkSwitch.set(handle)
         applyWatermark()
     }
 
@@ -161,7 +164,7 @@ final class PlayerManager {
         players[index].replaceCurrentItem(with: item)
         slotURLs[index] = url
         // A fresh item carries no composition, so the slot's record of one has to reset with it.
-        slotWatermark[index] = nil
+        slotFiltered[index] = false
         observe(item, at: index, url: url)
     }
 
@@ -187,32 +190,27 @@ final class PlayerManager {
         }
     }
 
-    /// Puts the watermark on the slot being watched and takes it off the other one. The
-    /// pre-buffering player is off screen, and filtering frames nobody is looking at is a waste of
-    /// battery.
+    /// Makes sure the slot being watched can draw the watermark.
+    ///
+    /// The composition is installed once and then left alone; whether it actually draws anything
+    /// is ``WatermarkSwitch``'s business. Only the visible slot gets one — the pre-buffering
+    /// player is off screen, and filtering frames nobody is looking at is a waste of battery.
     private func applyWatermark() {
-        for (index, player) in players.enumerated() {
-            let wanted = index == visibleSlot ? watermarkHandle : nil
-            guard slotWatermark[index] != wanted else { continue }
-            slotWatermark[index] = wanted
-            guard let item = player.currentItem else { continue }
-            guard let handle = wanted else {
-                item.videoComposition = nil
-                continue
-            }
-            Task { @MainActor in
-                let composition = try? await VideoFilterPipeline.composition(
-                    for: item.asset,
-                    blur: nil,
-                    watermark: handle
-                )
-                // Building it needs the asset's tracks, which for a streamed video means a round
-                // trip — by the time it lands the operator may have swiped somewhere else.
-                guard player.currentItem === item, self.slotWatermark[index] == handle else {
-                    return
-                }
-                item.videoComposition = composition
-            }
+        guard watermarkSwitch.isOn, visibleSlot >= 0, !slotFiltered[visibleSlot] else { return }
+        let index = visibleSlot
+        let player = players[index]
+        guard let item = player.currentItem else { return }
+        slotFiltered[index] = true
+
+        Task { @MainActor in
+            let composition = try? await VideoFilterPipeline.previewComposition(
+                for: item.asset,
+                watermark: self.watermarkSwitch
+            )
+            // Building it needs the asset's tracks, which for a streamed video means a round trip
+            // — by the time it lands the operator may have swiped somewhere else.
+            guard player.currentItem === item else { return }
+            item.videoComposition = composition
         }
     }
 }

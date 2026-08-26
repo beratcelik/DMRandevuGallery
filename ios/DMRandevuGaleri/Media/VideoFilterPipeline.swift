@@ -46,4 +46,26 @@ enum VideoFilterPipeline {
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
         return composition
     }
+
+    /// A composition for playback whose watermark can be switched on and off without rebuilding
+    /// it. See ``WatermarkSwitch`` for why that matters.
+    static func previewComposition(
+        for asset: AVAsset,
+        watermark: WatermarkSwitch
+    ) async throws -> AVMutableVideoComposition {
+        let composition = try await AVMutableVideoComposition.videoComposition(
+            with: asset
+        ) { request in
+            guard let mark = watermark.watermark() else {
+                request.finish(with: request.sourceImage, context: nil)
+                return
+            }
+            let timeUS = request.compositionTime.microseconds ?? 0
+            request.finish(with: mark.apply(to: request.sourceImage, at: timeUS), context: nil)
+        }
+        composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        return composition
+    }
 }

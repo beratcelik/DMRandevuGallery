@@ -38,6 +38,16 @@
                ReferencedContainer = "container:DMRandevuGaleri.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DA0000000000000000000070"
+               BuildableName = "DMRandevuGaleriUITests.xctest"
+               BlueprintName = "DMRandevuGaleriUITests"
+               ReferencedContainer = "container:DMRandevuGaleri.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

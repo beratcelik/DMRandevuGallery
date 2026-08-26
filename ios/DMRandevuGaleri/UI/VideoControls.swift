@@ -35,6 +35,7 @@ struct VideoScrubber: View {
                     .foregroundStyle(.white)
             }
             .padding(.horizontal, 16)
+            .accessibilityIdentifier("scrubber")
         }
     }
 

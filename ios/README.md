@@ -57,9 +57,18 @@ xcodebuild test -project ios/DMRandevuGaleri.xcodeproj -scheme DMRandevuGaleri \
   -destination 'platform=iOS,id=<device>'
 ```
 
-`BlurTimelineTests` is pure logic and runs anywhere. `VideoExportTests` needs a clip to work on and
-skips without one — put a `sample.mp4` in the host app's Documents directory, or set
-`DMRANDEVU_SAMPLE_VIDEO`. Use a clip with both a visible face and a visible plate.
+Three suites:
 
-The face test only runs on a device: Vision's face detector answers "could not create inference
-context" in the simulator. Everything else, the plate model included, runs in either.
+- **`BlurTimelineTests`, `CMTimeIntegersTests`** — pure logic, run anywhere.
+- **`VideoExportTests`** — measures what the export actually does to a real clip. Needs one: put a
+  `sample.mp4` in the host app's Documents directory, or set `DMRANDEVU_SAMPLE_VIDEO`. Use a clip
+  with both a visible face and a visible plate. The face case runs on a device only, because
+  Vision's face detector answers "could not create inference context" in the simulator.
+- **`DMRandevuGaleriUITests`** — drives the real app: the header layout, every filter toggle, tap
+  to pause, press to run fast, the scrubber, vertical paging and the caption sheet. Needs a signed-in
+  app (or `DMRANDEVU_USER` / `DMRANDEVU_PASS` in the runner environment) and skips otherwise.
+  Swiping forward past a customer queues their deletion, exactly as it does in use.
+
+Run the UI tests in the simulator unless the phone is unlocked and awake — device UI automation
+fails to start on a locked screen. The photo-library case skips in the simulator, which refuses the
+permission however it is granted.
