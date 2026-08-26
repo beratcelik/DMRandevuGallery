@@ -8,6 +8,11 @@ build/
 # Machine-specific: points at this machine's Android SDK.
 local.properties
 
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
 # IDE
 *.iml
 .idea/
