@@ -18,6 +18,14 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            // ONNX Runtime ships a 26 MB native library per architecture and ML Kit another 8;
+            // carrying four copies quadrupled the download for architectures no phone this app
+            // runs on has used in years. The Trafy camera app draws the same line.
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -62,6 +70,16 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource.okhttp)
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.common)
+    implementation(libs.mlkit.face.detection)
+    implementation(libs.onnxruntime.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

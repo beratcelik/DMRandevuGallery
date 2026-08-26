@@ -35,6 +35,26 @@
     <string name="reels_ready">Video galeriye kaydedildi, caption kopyalandı — Reels\'te videoyu seçip caption\'ı yapıştırın</string>
     <string name="reels_ready_no_caption">Video galeriye kaydedildi — caption üretilemedi, Reels\'te videoyu seçin</string>
 
+    <!-- Face blur filter -->
+    <string name="face_blur_toggle">Yüz filtresi</string>
+    <string name="plate_blur_toggle">Plaka filtresi</string>
+    <string name="plate_blur_on">Plaka filtresi açık — dışa aktarılan videolarda plakalar gizlenecek</string>
+    <string name="plate_blur_off">Plaka filtresi kapalı</string>
+    <string name="plates_fast_badge">Hızlı tarama</string>
+    <string name="plates_fast">Plaka taraması: hızlı — daha çabuk biter, uzaktaki plakaları daha sık kaçırır</string>
+    <string name="plates_thorough">Plaka taraması: titiz — daha çok plaka bulur, yaklaşık iki kat sürer</string>
+    <string name="watermark_toggle">Filigran</string>
+    <string name="watermark_on">Filigran açık — hesap adı videonun üzerinde gezinecek</string>
+    <string name="watermark_off">Filigran kapalı</string>
+    <string name="face_blur_on">Yüz filtresi açık — dışa aktarılan videolarda yüzler gizlenecek</string>
+    <string name="face_blur_off">Yüz filtresi kapalı</string>
+    <string name="face_blur_progress">%%%1$d</string>
+    <string name="export_failed">Video işlenemedi — aktarılmadı. Ham haliyle aktarmak için filtreleri kapatın.</string>
+
+    <!-- Playback -->
+    <string name="playback_speed">%1$d×</string>
+    <string name="resume">Devam et</string>
+
     <!-- Caption sheet -->
     <string name="caption_title">✨ Instagram Caption</string>
     <string name="caption_generating">Caption üretiliyor…</string>

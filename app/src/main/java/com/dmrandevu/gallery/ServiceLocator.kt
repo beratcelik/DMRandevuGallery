@@ -1,17 +1,20 @@
 package com.dmrandevu.gallery
 
 import android.content.Context
+import androidx.media3.common.util.UnstableApi
 import com.dmrandevu.gallery.data.GalleryRepository
 import com.dmrandevu.gallery.data.PersistentCookieJar
 import com.dmrandevu.gallery.data.SettingsStore
 import com.dmrandevu.gallery.media.Downloader
+import com.dmrandevu.gallery.media.VideoExporter
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /**
- * Hand-rolled singletons. One user, one screen pair, four dependencies — a DI framework
+ * Hand-rolled singletons. One user, one screen pair, a handful of dependencies — a DI framework
  * would cost more than it saves here.
  */
+@UnstableApi
 object ServiceLocator {
 
     lateinit var appContext: Context
@@ -27,6 +30,9 @@ object ServiceLocator {
         private set
 
     lateinit var repository: GalleryRepository
+        private set
+
+    lateinit var exporter: VideoExporter
         private set
 
     lateinit var downloader: Downloader
@@ -53,7 +59,8 @@ object ServiceLocator {
             }
             .build()
         repository = GalleryRepository(client, settings, cookieJar)
-        downloader = Downloader(appContext, client, repository)
+        exporter = VideoExporter(appContext)
+        downloader = Downloader(appContext, client, repository, exporter)
     }
 
     const val USER_AGENT = "DMRandevuGaleri/1.0 (Android)"

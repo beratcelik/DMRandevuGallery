@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
+import com.dmrandevu.gallery.media.ExportOptions
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -26,6 +27,7 @@ private data class PendingDelete(val conversation: Conversation, val job: Job)
 class GalleryViewModel(private val igId: String) : ViewModel() {
 
     private val repo = ServiceLocator.repository
+    private val settings = ServiceLocator.settings
 
     val items = mutableStateListOf<Conversation>()
 
@@ -41,6 +43,22 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     /** How many video-carrying conversations are left for this account. */
     private val _remaining = MutableStateFlow(0)
     val remaining: StateFlow<Int> = _remaining
+
+    /**
+     * Kept here rather than read straight off [SettingsStore] because the vertical pager keeps
+     * neighbouring pages composed — each one has to see the same toggle state.
+     */
+    private val _blurFaces = MutableStateFlow(settings.blurFaces)
+    val blurFaces: StateFlow<Boolean> = _blurFaces
+
+    private val _blurPlates = MutableStateFlow(settings.blurPlates)
+    val blurPlates: StateFlow<Boolean> = _blurPlates
+
+    private val _fastPlates = MutableStateFlow(settings.fastPlates)
+    val fastPlates: StateFlow<Boolean> = _fastPlates
+
+    private val _watermark = MutableStateFlow(settings.watermark)
+    val watermark: StateFlow<Boolean> = _watermark
 
     private val _events = Channel<GalleryEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
@@ -205,6 +223,38 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     fun markExpired(proxyUrl: String) {
         expiredUrls[proxyUrl] = true
     }
+
+    fun setBlurFaces(enabled: Boolean) {
+        settings.blurFaces = enabled
+        _blurFaces.value = enabled
+    }
+
+    fun setBlurPlates(enabled: Boolean) {
+        settings.blurPlates = enabled
+        _blurPlates.value = enabled
+    }
+
+    fun setFastPlates(enabled: Boolean) {
+        settings.fastPlates = enabled
+        _fastPlates.value = enabled
+    }
+
+    fun setWatermark(enabled: Boolean) {
+        settings.watermark = enabled
+        _watermark.value = enabled
+    }
+
+    /** The handle to burn in, or null when the watermark is off. Drives preview and export alike. */
+    fun watermarkHandle(): String? =
+        settings.igUsername.takeIf { _watermark.value && it.isNotBlank() }
+
+    /** What the export buttons should ask for, given how the two toggles are set. */
+    fun exportOptions() = ExportOptions(
+        blurFaces = _blurFaces.value,
+        blurPlates = _blurPlates.value,
+        fastPlates = _fastPlates.value,
+        watermarkHandle = watermarkHandle()
+    )
 
     fun reportSessionLost() {
         viewModelScope.launch { _events.send(GalleryEvent.SessionLost) }

@@ -4,6 +4,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,22 +15,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BlurOff
+import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,6 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -51,14 +66,18 @@ import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.InstagramSharing
+import com.dmrandevu.gallery.media.VideoExporter
 import com.dmrandevu.gallery.player.PlayerManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One customer, full screen. Horizontal swipes move between that customer's videos and never
  * delete anything — only the vertical swipe (handled by [GalleryViewModel]) does.
  */
 @OptIn(androidx.media3.common.util.UnstableApi::class)
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ConversationPage(
     conversation: Conversation,
@@ -79,9 +98,62 @@ fun ConversationPage(
     var sharingStory by remember { mutableStateOf(false) }
     var sharingReels by remember { mutableStateOf(false) }
     var captionForUrl by remember { mutableStateOf<String?>(null) }
+    // Percentage of the running export, or null while nothing is being processed. Only one
+    // action can run at a time, so a single holder covers all three buttons.
+    var exportProgress by remember { mutableStateOf<Int?>(null) }
+
+    // Playback controls. Hidden until the screen is touched, because the video is the point.
+    var controlsShown by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var scrubbing by remember { mutableStateOf(false) }
+    var holding by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+
+    val blurFaces by viewModel.blurFaces.collectAsStateWithLifecycle()
+    val blurPlates by viewModel.blurPlates.collectAsStateWithLifecycle()
+    val fastPlates by viewModel.fastPlates.collectAsStateWithLifecycle()
+    val watermark by viewModel.watermark.collectAsStateWithLifecycle()
+    // Exports share one cache directory and one progress readout, so they have to run one at a
+    // time — a second one starting would wipe the first one's working files out from under it.
+    val exporting = downloading || sharingStory || sharingReels
 
     val currentRawUrl = conversation.urls.getOrNull(mediaPager.currentPage)
     val currentProxyUrl = currentRawUrl?.let(repository::proxyUrl)
+
+    // The player has no position callback, so it gets read on a timer while this page is the one
+    // on screen. Paused while scrubbing, or the thumb would fight the poll for the same value.
+    LaunchedEffect(isActivePage, currentProxyUrl) {
+        while (isActivePage) {
+            playerManager.playerHolding(conversation.key)?.let { player ->
+                if (!scrubbing) positionMs = player.currentPosition
+                durationMs = player.duration.takeIf { it > 0 } ?: 0L
+            }
+            delay(POSITION_POLL_MS)
+        }
+    }
+
+    // Anything the operator does keeps the controls up; going quiet puts them away again. A
+    // paused video is not "going quiet" — the bar is the reason it was paused.
+    LaunchedEffect(controlsShown, scrubbing, paused) {
+        if (controlsShown && !scrubbing && !paused) {
+            delay(CONTROLS_LINGER_MS)
+            controlsShown = false
+        }
+    }
+
+    // A different video always starts playing, however the last one was left.
+    LaunchedEffect(currentProxyUrl, isActivePage) { paused = false }
+
+    LaunchedEffect(paused, isActivePage) {
+        if (isActivePage) playerManager.setPaused(conversation.key, paused)
+    }
+
+    // Holding the screen runs the video fast; letting go puts it back. Reset on leaving the page
+    // too, or a video swiped away mid-hold would still be racing when it came back.
+    LaunchedEffect(holding, isActivePage) {
+        playerManager.setSpeed(conversation.key, if (holding && isActivePage) HOLD_SPEED else 1f)
+    }
 
     // Playback follows the settled vertical page; the neighbouring page only pre-buffers.
     LaunchedEffect(isActivePage, isNextPage, currentProxyUrl) {
@@ -97,6 +169,59 @@ fun ConversationPage(
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Wrapped around the pager rather than laid over it. As an overlaying sibling
+                // this won the hit test outright and the pager never saw a swipe again; as the
+                // pager's parent, a drag reaches the pager first and only surfaces here if the
+                // pager did not want it. The controls stay siblings on top, so pressing one
+                // never reaches this at all.
+                .pointerInput(conversation.key) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var somebodyElses = false
+
+                        // Time runs out, the finger lifts, the finger starts travelling, or something
+                        // nearer the touch takes it — whichever happens first says what this was.
+                        val lifted = withTimeoutOrNull(HOLD_THRESHOLD_MS) {
+                            var up: PointerInputChange? = null
+                            while (up == null && !somebodyElses) {
+                                val change = awaitPointerEvent().changes
+                                    .firstOrNull { it.id == down.id } ?: break
+                                when {
+                                    // A pager or a button took it. Holding the screen still asks for
+                                    // fast playback; dragging across it, or pressing a control that
+                                    // happens to sit on it, does not.
+                                    change.isConsumed -> somebodyElses = true
+                                    change.changedToUp() -> up = change
+                                    (change.position - down.position).getDistance() >
+                                        viewConfiguration.touchSlop -> somebodyElses = true
+                                }
+                            }
+                            up
+                        }
+
+                        when {
+                            // Never about the video, so leave it alone.
+                            somebodyElses -> Unit
+
+                            lifted != null -> {
+                                // A quick tap stops or restarts the video, and brings the controls
+                                // up — stopping to look at something is when the bar is wanted.
+                                paused = !paused
+                                controlsShown = true
+                            }
+
+                            else -> {
+                                holding = true
+                                waitForUpOrCancellation()
+                                holding = false
+                            }
+                        }
+                    }
+                }
+        ) {
         HorizontalPager(
             state = mediaPager,
             modifier = Modifier.fillMaxSize()
@@ -135,6 +260,7 @@ fun ConversationPage(
                 }
             }
         }
+        }
 
         // Scrims: white controls have to stay readable over a bright frame.
         Box(
@@ -155,6 +281,24 @@ fun ConversationPage(
                     Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)))
                 )
         )
+
+        if (paused) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = stringResource(R.string.resume),
+                tint = Color.White.copy(alpha = 0.75f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(72.dp)
+            )
+        }
+
+        if (holding) {
+            SpeedBadge(
+                speed = HOLD_SPEED.toInt(),
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
 
         // Header: which customer this is, and where we are in their videos.
         Row(
@@ -180,16 +324,113 @@ fun ConversationPage(
                     )
                 }
             }
-            // How many customers are still waiting. The dots below already say how many
-            // videos this one has, so the per-video position is not repeated here.
-            val remaining by viewModel.remaining.collectAsStateWithLifecycle()
-            if (remaining > 0) {
-                Text(
-                    text = remaining.toString(),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Up here rather than in the action row below, which is already tight on width.
+                IconButton(
+                    onClick = {
+                        viewModel.setBlurFaces(!blurFaces)
+                        Toast.makeText(
+                            context,
+                            if (blurFaces) R.string.face_blur_off else R.string.face_blur_on,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Icon(
+                        imageVector = if (blurFaces) Icons.Filled.BlurOn else Icons.Filled.BlurOff,
+                        contentDescription = stringResource(R.string.face_blur_toggle),
+                        tint = if (blurFaces) Color.White else Color.White.copy(alpha = 0.45f)
+                    )
+                }
+                Box(
+                    // Tap switches the filter; holding switches how hard it looks. Tucked behind
+                    // a long press because it is a knob to set once, not one to reach for daily.
+                    Modifier.combinedClickable(
+                        onClick = {
+                            viewModel.setBlurPlates(!blurPlates)
+                            Toast.makeText(
+                                context,
+                                if (blurPlates) R.string.plate_blur_off else R.string.plate_blur_on,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onLongClick = {
+                            viewModel.setFastPlates(!fastPlates)
+                            Toast.makeText(
+                                context,
+                                if (fastPlates) R.string.plates_thorough else R.string.plates_fast,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    )
+                ) {
+                    val plateTint =
+                        if (blurPlates) Color.White else Color.White.copy(alpha = 0.45f)
+                    Icon(
+                        imageVector = Icons.Filled.DirectionsCar,
+                        contentDescription = stringResource(R.string.plate_blur_toggle),
+                        tint = plateTint,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                    if (fastPlates) {
+                        // A bolt on the corner for the quicker setting, nothing for the thorough
+                        // one — so the icon says which of the two the long press left it on.
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = stringResource(R.string.plates_fast_badge),
+                            tint = plateTint,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 4.dp, bottom = 8.dp)
+                                .size(14.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        viewModel.setWatermark(!watermark)
+                        Toast.makeText(
+                            context,
+                            if (watermark) R.string.watermark_off else R.string.watermark_on,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.BrandingWatermark,
+                        contentDescription = stringResource(R.string.watermark_toggle),
+                        tint = if (watermark) Color.White else Color.White.copy(alpha = 0.45f)
+                    )
+                }
+                // How many customers are still waiting. The dots below already say how many
+                // videos this one has, so the per-video position is not repeated here.
+                val remaining by viewModel.remaining.collectAsStateWithLifecycle()
+                if (remaining > 0) {
+                    Text(
+                        text = remaining.toString(),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
             }
+        }
+
+        if (controlsShown) {
+            VideoScrubber(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onScrubTo = {
+                    scrubbing = true
+                    positionMs = it
+                },
+                onScrubFinished = {
+                    playerManager.playerHolding(conversation.key)?.seekTo(positionMs)
+                    scrubbing = false
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 92.dp)
+            )
         }
 
         // Dots + actions.
@@ -221,35 +462,42 @@ fun ConversationPage(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ActionButton(
                     icon = Icons.Filled.Download,
-                    label = stringResource(if (downloading) R.string.downloading else R.string.download),
+                    label = exportProgress.percentWhen(
+                        downloading,
+                        if (downloading) R.string.downloading else R.string.download
+                    ),
                     busy = downloading,
-                    enabled = currentRawUrl != null
+                    enabled = currentRawUrl != null && !exporting
                 ) {
                     val rawUrl = currentRawUrl ?: return@ActionButton
                     downloading = true
                     scope.launch {
                         val message = try {
-                            if (downloader.saveToGallery(rawUrl, conversation.clientName)) {
-                                R.string.download_done
-                            } else {
-                                R.string.download_failed
-                            }
+                            val saved = downloader.saveToGallery(
+                                rawUrl,
+                                conversation.clientName,
+                                viewModel.exportOptions()
+                            ) { exportProgress = it }
+                            if (saved) R.string.download_done else R.string.download_failed
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
                             R.string.download_failed
+                        } catch (e: VideoExporter.ExportFailedException) {
+                            R.string.export_failed
                         } finally {
                             downloading = false
+                            exportProgress = null
                         }
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }
                 }
 
                 // Stories carry no caption, so this is a straight hand-off of the video.
                 ActionButton(
                     icon = Icons.Filled.AddCircleOutline,
-                    label = stringResource(R.string.story),
+                    label = exportProgress.percentWhen(sharingStory, R.string.story),
                     busy = sharingStory,
-                    enabled = currentRawUrl != null
+                    enabled = currentRawUrl != null && !exporting
                 ) {
                     val rawUrl = currentRawUrl ?: return@ActionButton
                     if (!InstagramSharing.isInstalled(context)) {
@@ -259,14 +507,21 @@ fun ConversationPage(
                     sharingStory = true
                     scope.launch {
                         try {
-                            val file = downloader.downloadForShare(rawUrl, conversation.clientName)
+                            val file = downloader.downloadForShare(
+                                rawUrl,
+                                conversation.clientName,
+                                viewModel.exportOptions()
+                            ) { exportProgress = it }
                             InstagramSharing.openStoryComposer(context, file)
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
+                        } catch (e: VideoExporter.ExportFailedException) {
+                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
                             sharingStory = false
+                            exportProgress = null
                         }
                     }
                 }
@@ -275,9 +530,9 @@ fun ConversationPage(
                 // so it is generated first and the operator pastes it in the composer.
                 ActionButton(
                     icon = Icons.Filled.Theaters,
-                    label = stringResource(R.string.reels),
+                    label = exportProgress.percentWhen(sharingReels, R.string.reels),
                     busy = sharingReels,
-                    enabled = currentRawUrl != null
+                    enabled = currentRawUrl != null && !exporting
                 ) {
                     val rawUrl = currentRawUrl ?: return@ActionButton
                     if (!InstagramSharing.isInstalled(context)) {
@@ -289,7 +544,12 @@ fun ConversationPage(
                         try {
                             // Saved to the gallery rather than handed over directly, because
                             // Reels can only take a video the operator picks there.
-                            downloader.saveToGallery(rawUrl, conversation.clientName)
+                            downloader.saveToGallery(
+                                rawUrl,
+                                conversation.clientName,
+                                viewModel.exportOptions()
+                            ) { exportProgress = it }
+                            exportProgress = null
                             val caption = runCatching {
                                 repository.generateCaption(
                                     salonId = conversation.salonId,
@@ -307,10 +567,13 @@ fun ConversationPage(
                             InstagramSharing.openInstagram(context)
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
+                        } catch (e: VideoExporter.ExportFailedException) {
+                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
                             sharingReels = false
+                            exportProgress = null
                         }
                     }
                 }
@@ -319,7 +582,7 @@ fun ConversationPage(
                     icon = Icons.Filled.AutoAwesome,
                     label = stringResource(R.string.caption),
                     busy = false,
-                    enabled = currentRawUrl != null
+                    enabled = currentRawUrl != null && !exporting
                 ) {
                     captionForUrl = currentRawUrl
                 }
@@ -336,6 +599,28 @@ fun ConversationPage(
         )
     }
 }
+
+/**
+ * The export's percentage while [busy], otherwise [fallbackRes]. Blurring a video takes long
+ * enough that a spinner alone leaves the operator wondering whether it is stuck. The progress
+ * holder is shared, so the flag keeps the count on the one button that is actually working.
+ */
+@Composable
+private fun Int?.percentWhen(busy: Boolean, fallbackRes: Int): String =
+    if (busy && this != null) stringResource(R.string.face_blur_progress, this)
+    else stringResource(fallbackRes)
+
+/** How long the controls stay up once nothing is happening. */
+private const val CONTROLS_LINGER_MS = 3_000L
+
+/** How often the player is asked where it has got to. */
+private const val POSITION_POLL_MS = 120L
+
+/** Past this, a press is a hold rather than a tap. */
+private const val HOLD_THRESHOLD_MS = 250L
+
+/** How much faster a held-down video runs. */
+private const val HOLD_SPEED = 3f
 
 /**
  * One compact action in the bottom bar. Four of these have to share the width, so the label

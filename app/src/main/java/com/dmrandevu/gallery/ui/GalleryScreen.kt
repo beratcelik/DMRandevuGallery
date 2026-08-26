@@ -83,6 +83,12 @@ fun GalleryScreen(
         snapshotFlow { pagerState.settledPage }.collect { viewModel.onPageSettled(it) }
     }
 
+    // Preview the watermark on the players themselves, so what plays here is what gets exported.
+    val watermark by viewModel.watermark.collectAsStateWithLifecycle()
+    LaunchedEffect(watermark, playerManager) {
+        playerManager.setWatermark(viewModel.watermarkHandle())
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {

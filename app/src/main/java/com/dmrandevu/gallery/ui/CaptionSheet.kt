@@ -44,6 +44,8 @@ import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.Downloader
+import com.dmrandevu.gallery.media.ExportOptions
+import com.dmrandevu.gallery.media.VideoExporter
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,6 +66,7 @@ fun CaptionSheet(
     var generating by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
+    var shareProgress by remember { mutableStateOf<Int?>(null) }
 
     suspend fun generate(manualExplanation: String?) {
         generating = true
@@ -154,8 +157,19 @@ fun CaptionSheet(
                     sharing = true
                     scope.launch {
                         try {
-                            val file = ServiceLocator.downloader
-                                .downloadForShare(rawMediaUrl, conversation.clientName)
+                            // Read at click time rather than collected: the sheet has no view
+                            // model, and the toggles write through synchronously.
+                            val settings = ServiceLocator.settings
+                            val file = ServiceLocator.downloader.downloadForShare(
+                                rawMediaUrl,
+                                conversation.clientName,
+                                ExportOptions(
+                                    blurFaces = settings.blurFaces,
+                                    blurPlates = settings.blurPlates,
+                                    watermarkHandle = settings.igUsername
+                                        .takeIf { settings.watermark && it.isNotBlank() }
+                                )
+                            ) { shareProgress = it }
                             // Instagram drops EXTRA_TEXT, so the caption travels via the clipboard —
                             // the same trick the web gallery uses.
                             copyToClipboard(context, text)
@@ -165,10 +179,13 @@ fun CaptionSheet(
                         } catch (e: UnauthorizedException) {
                             onSessionLost()
                             onDismiss()
+                        } catch (e: VideoExporter.ExportFailedException) {
+                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
                             sharing = false
+                            shareProgress = null
                         }
                     }
                 },
@@ -180,7 +197,9 @@ fun CaptionSheet(
                 if (sharing) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(
-                        text = stringResource(R.string.share_preparing),
+                        text = shareProgress
+                            ?.let { stringResource(R.string.face_blur_progress, it) }
+                            ?: stringResource(R.string.share_preparing),
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 } else {

@@ -11,5 +11,7 @@ local.properties
 # IDE
 *.iml
 .idea/
+.vscode/
+.claude/
 
 .DS_Store
