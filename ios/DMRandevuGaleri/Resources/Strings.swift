@@ -18,6 +18,7 @@ enum Strings {
     static let loginFailed = "Giriş başarısız. Bilgileri kontrol edin."
     static let loginAccountNotFound = "Instagram hesabı bulunamadı"
     static let loginNetworkError = "Sunucuya ulaşılamadı"
+    static let loginBadServer = "Sunucu adresi geçersiz"
     static let checkingSession = "Oturum kontrol ediliyor…"
 
     // MARK: - Gallery

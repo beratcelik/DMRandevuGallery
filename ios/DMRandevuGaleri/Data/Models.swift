@@ -45,6 +45,9 @@ struct UnauthorizedError: Error {}
 
 struct AccountNotFoundError: Error {}
 
+/// The stored or typed server address is not a usable URL.
+struct InvalidServerAddressError: Error {}
+
 /// Any other non-2xx answer, kept apart from the two the UI reacts to specifically.
 struct HTTPStatusError: Error {
     let code: Int

@@ -243,10 +243,9 @@ final class VideoExportTests: XCTestCase {
 
         var nextUS: Int64 = 0
         while let buffer = output.copyNextSampleBuffer() {
-            let timeUS = Int64(
-                CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000
-            )
-            guard timeUS >= nextUS, let pixels = CMSampleBufferGetImageBuffer(buffer) else { continue }
+            guard let timeUS = CMSampleBufferGetPresentationTimeStamp(buffer).microseconds,
+                  timeUS >= nextUS,
+                  let pixels = CMSampleBufferGetImageBuffer(buffer) else { continue }
             nextUS = timeUS + Self.sampleMS * 1_000
             try body(CIImage(cvPixelBuffer: pixels).oriented(orientation), timeUS)
         }

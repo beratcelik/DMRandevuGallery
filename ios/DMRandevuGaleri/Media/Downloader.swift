@@ -102,7 +102,8 @@ final class Downloader {
     }
 
     private func fetch(_ rawURL: String, to destination: URL) async throws {
-        var request = URLRequest(url: repository.proxyURL(rawURL))
+        guard let proxy = repository.proxyURL(rawURL) else { throw InvalidServerAddressError() }
+        var request = URLRequest(url: proxy)
         request.setValue(GalleryRepository.userAgent, forHTTPHeaderField: "User-Agent")
         let (temporary, response) = try await session.download(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0

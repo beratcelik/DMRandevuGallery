@@ -31,7 +31,7 @@ enum VideoFilterPipeline {
             // `sourceImage` already has the container's rotation applied, so a portrait clip
             // arrives portrait and the whole pipeline works in the upright frame — the same space
             // the detectors reported their boxes in.
-            let timeUS = Int64(CMTimeGetSeconds(request.compositionTime) * 1_000_000)
+            let timeUS = request.compositionTime.microseconds ?? 0
             var image = request.sourceImage
             if let mosaic { image = mosaic.apply(to: image, at: timeUS) }
             if let mark { image = mark.apply(to: image, at: timeUS) }

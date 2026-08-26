@@ -107,6 +107,7 @@ struct LoginView: View {
         switch error {
         case .credentials: Strings.loginFailed
         case .accountNotFound: Strings.loginAccountNotFound
+        case .serverAddress: Strings.loginBadServer
         case .network: Strings.loginNetworkError
         }
     }

@@ -37,8 +37,7 @@ final class RegionScanner: Sendable {
         guard let track = tracks.first else { throw NoVideoTrackError() }
 
         let duration = try await asset.load(.duration)
-        let durationUS = Int64(CMTimeGetSeconds(duration) * 1_000_000)
-        guard durationUS > 0 else { return .empty() }
+        guard let durationUS = duration.microseconds, durationUS > 0 else { return .empty() }
 
         let transform = try await track.load(.preferredTransform)
         let orientation = Self.orientation(from: transform)
@@ -99,10 +98,8 @@ final class RegionScanner: Sendable {
         while let sample = output.copyNextSampleBuffer() {
             if Task.isCancelled { throw CancellationError() }
 
-            let presentationUS = Int64(
-                CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample)) * 1_000_000
-            )
-            guard presentationUS >= nextSampleUS,
+            guard let presentationUS = CMSampleBufferGetPresentationTimeStamp(sample).microseconds,
+                  presentationUS >= nextSampleUS,
                   let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
             nextSampleUS = presentationUS + stepUS
 

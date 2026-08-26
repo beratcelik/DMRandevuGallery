@@ -54,7 +54,7 @@ final class PlayerManager {
             queue: .main
         ) { [weak self] note in
             guard let item = note.object as? AVPlayerItem else { return }
-            MainActor.assumeIsolated { self?.restart(item) }
+            Task { @MainActor in self?.restart(item) }
         }
     }
 
@@ -166,16 +166,16 @@ final class PlayerManager {
     }
 
     private func observe(_ item: AVPlayerItem, at index: Int, url: String) {
+        // KVO fires on whichever queue AVFoundation changed the property on — never assume the
+        // main actor here, because asserting it and being wrong is itself a crash. An expired CDN
+        // link is an ordinary event in this app, so this path runs in normal use.
         statusObservations[index] = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard item.status == .failed else { return }
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                // The HTTP status is not on the error itself; the item's own error log is the one
-                // place AVFoundation writes it down, and it is what separates a dead session from
-                // a CDN link that has simply expired.
-                let status = item.errorLog()?.events.last?.errorStatusCode
-                self.onError(url, status == 401)
-            }
+            // The HTTP status is not on the error itself; the item's own error log is the one
+            // place AVFoundation writes it down, and it is what separates a dead session from a
+            // CDN link that has simply expired.
+            let status = item.errorLog()?.events.last?.errorStatusCode
+            Task { @MainActor in self?.onError(url, status == 401) }
         }
     }
 
@@ -183,7 +183,7 @@ final class PlayerManager {
         guard let player = players.first(where: { $0.currentItem === item }) else { return }
         item.seek(to: .zero) { finished in
             guard finished else { return }
-            MainActor.assumeIsolated { if player.rate == 0 { player.play() } }
+            Task { @MainActor in if player.rate == 0 { player.play() } }
         }
     }
 

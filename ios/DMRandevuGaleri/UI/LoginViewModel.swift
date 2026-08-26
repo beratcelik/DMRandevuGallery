@@ -4,6 +4,7 @@ import Observation
 enum LoginError {
     case credentials
     case accountNotFound
+    case serverAddress
     case network
 }
 
@@ -75,6 +76,9 @@ final class LoginViewModel {
         } catch is AccountNotFoundError {
             submitting = false
             error = .accountNotFound
+        } catch is InvalidServerAddressError {
+            submitting = false
+            error = .serverAddress
         } catch is UnauthorizedError {
             submitting = false
             error = .credentials

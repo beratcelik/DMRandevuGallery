@@ -44,7 +44,7 @@ struct ConversationPageView: View {
         conversation.urls.indices.contains(currentIndex) ? conversation.urls[currentIndex] : nil
     }
     private var currentProxyURL: String? {
-        currentRawURL.map { repository.proxyURL($0).absoluteString }
+        currentRawURL.flatMap { repository.proxyURL($0)?.absoluteString }
     }
 
     var body: some View {
@@ -124,7 +124,9 @@ struct ConversationPageView: View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(Array(conversation.urls.enumerated()), id: \.offset) { index, rawURL in
-                    let proxyURL = repository.proxyURL(rawURL).absoluteString
+                    // Only an identity for the expired-video marker, so the raw url does just as
+                    // well when the server address will not form one.
+                    let proxyURL = repository.proxyURL(rawURL)?.absoluteString ?? rawURL
                     ZStack {
                         Color.black
                         if model.expiredURLs.contains(proxyURL) {
@@ -374,11 +376,13 @@ struct ConversationPageView: View {
     private func pollPosition() async {
         while isActivePage && !Task.isCancelled {
             if let player = playerManager.playerHolding(conversation.key) {
-                if !scrubbing {
-                    positionMS = Int64(CMTimeGetSeconds(player.currentTime()) * 1000)
+                // Both of these are routinely not real instants yet — a player answers with an
+                // invalid time until its item is ready. Holding the last known value beats
+                // flashing a zero into the bar every time a video is swapped in.
+                if !scrubbing, let position = player.currentTime().milliseconds {
+                    positionMS = position
                 }
-                let duration = player.currentItem?.duration ?? .indefinite
-                durationMS = duration.isNumeric ? Int64(CMTimeGetSeconds(duration) * 1000) : 0
+                durationMS = player.currentItem?.duration.milliseconds ?? 0
             }
             try? await Task.sleep(for: .milliseconds(Self.positionPollMS))
         }

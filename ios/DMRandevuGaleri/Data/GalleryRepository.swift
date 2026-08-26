@@ -29,21 +29,41 @@ final class GalleryRepository {
         return url
     }
 
-    /// URL that streams a CDN video through the server-side proxy (Range-capable).
-    func proxyURL(_ rawURL: String) -> URL {
-        var components = URLComponents(string: "\(base)/admin/media-proxy")!
-        components.queryItems = [URLQueryItem(name: "url", value: rawURL)]
-        return components.url!
+    /// URL that streams a CDN video through the server-side proxy (Range-capable). Nil when the
+    /// stored server address is not a usable one.
+    func proxyURL(_ rawURL: String) -> URL? {
+        endpoint("/admin/media-proxy", query: [URLQueryItem(name: "url", value: rawURL)])
+    }
+
+    /// One endpoint on the configured server.
+    ///
+    /// The address is whatever the operator typed on the login screen, so it can perfectly well be
+    /// something that is not a URL at all. Every one of these used to be a force unwrap, which
+    /// turned a typo into a crash.
+    private func endpoint(_ path: String, query: [URLQueryItem] = []) -> URL? {
+        guard var components = URLComponents(string: base + path) else { return nil }
+        if !query.isEmpty { components.queryItems = query }
+        return components.url
+    }
+
+    private func require(_ url: URL?) throws -> URL {
+        guard let url else { throw InvalidServerAddressError() }
+        return url
     }
 
     /// The login route answers with a 302 either way, so success is decided by the Location
     /// header — redirects must stay off or we would follow it and lose that signal.
     func login(baseURL: String, username: String, password: String) async throws -> Bool {
-        settings.baseURL = baseURL
         var trimmed = baseURL
         while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        // Checked before it is stored, so a typo cannot be persisted and break the next launch.
+        guard let url = URL(string: "\(trimmed)/admin/auth/login"),
+              url.scheme != nil, url.host != nil else {
+            throw InvalidServerAddressError()
+        }
+        settings.baseURL = baseURL
 
-        var request = URLRequest(url: URL(string: "\(trimmed)/admin/auth/login")!)
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = formBody(["username": username, "password": password])
@@ -68,9 +88,12 @@ final class GalleryRepository {
             return ResolveResponse(igId: account, username: account)
         }
 
-        var components = URLComponents(string: "\(base)/admin/media-gallery-resolve")!
-        components.queryItems = [URLQueryItem(name: "username", value: account)]
-        let (data, response) = try await session.data(from: components.url!)
+        let url = try require(
+            endpoint("/admin/media-gallery-resolve", query: [
+                URLQueryItem(name: "username", value: account)
+            ])
+        )
+        let (data, response) = try await session.data(from: url)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 404 {
             // Either the account is unknown, or this server predates the resolve endpoint. Fall
@@ -96,20 +119,23 @@ final class GalleryRepository {
     }
 
     func loadPage(igId: String, offset: Int, limit: Int) async throws -> GalleryPage {
-        var components = URLComponents(string: "\(base)/admin/media-gallery-page")!
-        components.queryItems = [
-            URLQueryItem(name: "igId", value: igId),
-            URLQueryItem(name: "offset", value: String(offset)),
-            URLQueryItem(name: "limit", value: String(limit))
-        ]
-        let (data, response) = try await session.data(from: components.url!)
+        let url = try require(
+            endpoint("/admin/media-gallery-page", query: [
+                URLQueryItem(name: "igId", value: igId),
+                URLQueryItem(name: "offset", value: String(offset)),
+                URLQueryItem(name: "limit", value: String(limit))
+            ])
+        )
+        let (data, response) = try await session.data(from: url)
         try check((response as? HTTPURLResponse)?.statusCode ?? 0)
         return try decoder.decode(GalleryPage.self, from: data)
     }
 
     /// Deletes the whole conversation. A 404 means it is already gone — same end state.
     func deleteConversation(salonId: String, clientId: String) async throws {
-        var request = URLRequest(url: URL(string: "\(base)/admin/conversation/\(salonId)/\(clientId)")!)
+        var request = URLRequest(
+            url: try require(endpoint("/admin/conversation/\(salonId)/\(clientId)"))
+        )
         request.httpMethod = "DELETE"
         let (_, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -133,7 +159,7 @@ final class GalleryRepository {
             payload["manualExplanation"] = manualExplanation
         }
 
-        var request = URLRequest(url: URL(string: "\(base)/admin/generate-caption")!)
+        var request = URLRequest(url: try require(endpoint("/admin/generate-caption")))
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -146,7 +172,8 @@ final class GalleryRepository {
 
     /// Cookies for the proxy host, so AVFoundation can stream a video the session gates.
     func sessionCookies() -> [HTTPCookie] {
-        cookies.cookies(for: URL(string: base) ?? URL(string: Self.defaultHost)!)
+        guard let url = URL(string: base) else { return [] }
+        return cookies.cookies(for: url)
     }
 
     func clearSession() {
@@ -170,8 +197,6 @@ final class GalleryRepository {
             .joined(separator: "&")
             .data(using: .utf8) ?? Data()
     }
-
-    private static let defaultHost = SettingsStore.defaultBaseURL
 
     /// Handle → Instagram id, for servers without /admin/media-gallery-resolve.
     private static let knownAccounts = [
