@@ -154,11 +154,45 @@ final class GalleryUITests: XCTestCase {
         video.tap()
     }
 
+    /// Fast playback belongs to the press: the video really does run faster while the finger is
+    /// down, and goes back to normal when it comes off.
+    ///
+    /// Measured from the playhead rather than the badge, because `press(forDuration:)` blocks
+    /// until the finger lifts and XCUITest will not drive a press from another thread. How far the
+    /// video got is an effect that outlives the press, and is the thing the operator cares about.
     @MainActor
     func testHoldingRunsTheVideoFast() throws {
+        video.tap() // pause, and bring the scrubber up
+        XCTAssertTrue(scrubber.waitForExistence(timeout: 3), "no scrubber to read")
+        let start = try elapsedSeconds()
+
+        video.tap() // play
+        let began = Date()
+        video.press(forDuration: 2.5)
+        video.tap() // pause again
+        let wallClock = Date().timeIntervalSince(began)
+
+        XCTAssertTrue(scrubber.waitForExistence(timeout: 3), "the scrubber went away")
+        let end = try elapsedSeconds()
+        try XCTSkipIf(end < start, "the video looped mid-measurement")
+
+        let advanced = end - start
+        XCTAssertGreaterThan(
+            advanced, wallClock * 1.8,
+            "holding did not speed the video up — it advanced \(advanced)s in \(wallClock)s"
+        )
+        XCTAssertFalse(speedBadge.exists, "it kept running fast after the finger came off")
+        video.tap() // leave it playing
+    }
+
+    /// Fast playback must end with the press. It used to *start* on release and stay on.
+    @MainActor
+    func testHoldingEndsWhenTheFingerLifts() throws {
         video.press(forDuration: 1.2)
-        // The badge is gone by the time a press returns, so the check is that holding did not
-        // instead land as a tap — which would have paused it.
+        XCTAssertFalse(
+            speedBadge.exists,
+            "the video is still running fast after the finger came off"
+        )
         XCTAssertFalse(pausedIndicator.exists, "a hold was read as a tap and paused the video")
     }
 
@@ -266,6 +300,7 @@ final class GalleryUITests: XCTestCase {
     @MainActor private var customerNameText: String { customer.label }
     @MainActor private var pausedIndicator: XCUIElement { onScreen("pausedIndicator") }
     @MainActor private var scrubber: XCUIElement { onScreen("scrubber") }
+    @MainActor private var speedBadge: XCUIElement { onScreen("speedBadge") }
     @MainActor private var dots: XCUIElement { onScreen("mediaDots") }
 
     /// The middle of the screen: video, and nothing else on top of it.
@@ -284,6 +319,17 @@ final class GalleryUITests: XCTestCase {
     }
 
     /// True as soon as any of `labels` is on screen.
+    /// The scrubber's elapsed readout, as seconds.
+    @MainActor
+    private func elapsedSeconds() throws -> TimeInterval {
+        let label = onScreen("elapsed").label
+        let parts = label.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else {
+            throw XCTSkip("Could not read the playhead from \(label)")
+        }
+        return TimeInterval(parts[0] * 60 + parts[1])
+    }
+
     @MainActor
     private func waitForAnyText(_ labels: [String], timeout: TimeInterval = 5) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)

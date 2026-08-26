@@ -30,6 +30,10 @@ struct ConversationPageView: View {
     @State private var durationMS: Int64 = 0
     @State private var scrubbing = false
     @State private var holding = false
+
+    /// Counts out the press before fast playback starts, and is cancelled if the finger lifts or
+    /// wanders first.
+    @State private var holdTimer: Task<Void, Never>?
     @State private var paused = false
 
     /// The video runs edge to edge; the controls over it must not.
@@ -70,12 +74,29 @@ struct ConversationPageView: View {
                 // nearer the finger and still composes with the scroll views.
                 .gesture(tapGesture)
                 .onLongPressGesture(
-                    minimumDuration: Self.holdThreshold,
+                    // Deliberately never reached. `perform` turned out to fire on *release*, not
+                    // when the press matured, so the video only started running fast once the
+                    // finger came off — and nothing was left to stop it again. Holding is timed
+                    // here instead, off the press-and-release signal, which is honest about when
+                    // the finger is actually down.
+                    minimumDuration: .infinity,
                     // The touch slop: a finger that travels before the press matures is swiping
-                    // between videos, not asking for fast playback.
+                    // between videos, not asking for fast playback. Exceeding it fails the
+                    // gesture, which arrives here as the press ending.
                     maximumDistance: Self.touchSlop,
-                    perform: { holding = true },
-                    onPressingChanged: { pressing in if !pressing { holding = false } }
+                    perform: {},
+                    onPressingChanged: { pressing in
+                        holdTimer?.cancel()
+                        guard pressing else {
+                            holding = false
+                            return
+                        }
+                        holdTimer = Task {
+                            try? await Task.sleep(for: .seconds(Self.holdThreshold))
+                            guard !Task.isCancelled else { return }
+                            holding = true
+                        }
+                    }
                 )
 
             scrims
@@ -116,7 +137,10 @@ struct ConversationPageView: View {
         // page too, or a video swiped away mid-hold would still be racing when it came back.
         .onChange(of: holding) { _, _ in applySpeed() }
         .onChange(of: isActivePage) { _, active in
-            if !active { holding = false }
+            if !active {
+                holdTimer?.cancel()
+                holding = false
+            }
             applySpeed()
         }
         // A different video always starts playing, however the last one was left.

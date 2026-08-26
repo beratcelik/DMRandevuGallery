@@ -18,6 +18,7 @@ struct VideoScrubber: View {
                 Text(clock(positionMS))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.white)
+                    .accessibilityIdentifier("elapsed")
 
                 Slider(
                     value: Binding(
@@ -35,6 +36,9 @@ struct VideoScrubber: View {
                     .foregroundStyle(.white)
             }
             .padding(.horizontal, 16)
+            // A container, not a leaf: naming the row without this collapses the times and the
+            // slider into one element and hides them.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("scrubber")
         }
     }
