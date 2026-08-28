@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.ServiceLocator
+import com.dmrandevu.gallery.player.PlaybackFailure
 import com.dmrandevu.gallery.player.PlayerManager
 
 private class GalleryViewModelFactory(private val igId: String) : ViewModelProvider.Factory {
@@ -56,8 +57,9 @@ fun GalleryScreen(
         PlayerManager(
             context = context.applicationContext,
             okHttpClient = ServiceLocator.client,
-            onError = { url, unauthorized ->
-                if (unauthorized) viewModel.reportSessionLost() else viewModel.markExpired(url)
+            onError = { url, failure ->
+                if (failure == PlaybackFailure.SESSION_LOST) viewModel.reportSessionLost()
+                else viewModel.reportPlaybackFailure(url, failure)
             }
         )
     }

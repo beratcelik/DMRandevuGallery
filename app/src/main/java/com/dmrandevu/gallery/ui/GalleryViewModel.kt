@@ -8,6 +8,7 @@ import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.ExportOptions
+import com.dmrandevu.gallery.player.PlaybackFailure
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -31,8 +32,8 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     val items = mutableStateListOf<Conversation>()
 
-    /** Proxy urls that failed to play — the CDN link behind them has expired. */
-    val expiredUrls = mutableStateMapOf<String, Boolean>()
+    /** Proxy urls that failed to play, and what kind of failure each one hit. */
+    val failures = mutableStateMapOf<String, PlaybackFailure>()
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
@@ -220,8 +221,13 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         if (items.size <= PREFETCH_DISTANCE) loadMore()
     }
 
-    fun markExpired(proxyUrl: String) {
-        expiredUrls[proxyUrl] = true
+    fun reportPlaybackFailure(proxyUrl: String, failure: PlaybackFailure) {
+        failures[proxyUrl] = failure
+    }
+
+    /** Forgets a failure so the page can put the player back and give the video another go. */
+    fun clearFailure(proxyUrl: String) {
+        failures.remove(proxyUrl)
     }
 
     fun setBlurFaces(enabled: Boolean) {

@@ -67,6 +67,7 @@ import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.InstagramSharing
 import com.dmrandevu.gallery.media.VideoExporter
+import com.dmrandevu.gallery.player.PlaybackFailure
 import com.dmrandevu.gallery.player.PlayerManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -228,15 +229,24 @@ fun ConversationPage(
         ) { mediaIndex ->
             val rawUrl = conversation.urls[mediaIndex]
             val proxyUrl = repository.proxyUrl(rawUrl)
-            val isExpired = viewModel.expiredUrls[proxyUrl] == true
+            val failure = viewModel.failures[proxyUrl]
             val isCurrentMedia = mediaPager.currentPage == mediaIndex
 
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when {
-                    isExpired -> Text(
+                    failure == PlaybackFailure.LINK_DEAD -> Text(
                         text = stringResource(R.string.video_expired),
                         color = Color.White.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    // Nothing about this one says the video itself is bad, so it keeps the offer
+                    // of another go instead of being written off for the rest of the session.
+                    failure == PlaybackFailure.TRANSIENT -> PlaybackRetry(
+                        onRetry = {
+                            viewModel.clearFailure(proxyUrl)
+                            playerManager.play(conversation.key, proxyUrl)
+                        }
                     )
 
                     isActivePage && isCurrentMedia -> AndroidView(
@@ -597,6 +607,24 @@ fun ConversationPage(
             onSessionLost = viewModel::reportSessionLost,
             onDismiss = { captionForUrl = null }
         )
+    }
+}
+
+/** Stands in for a video that fell over for a reason that may well not happen twice. */
+@Composable
+private fun PlaybackRetry(onRetry: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.video_failed),
+            color = Color.White.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        TextButton(onClick = onRetry) {
+            Text(stringResource(R.string.video_retry), color = Color.White)
+        }
     }
 }
 

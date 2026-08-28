@@ -13,6 +13,18 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.dmrandevu.gallery.media.watermark.WanderingWatermark
 import okhttp3.OkHttpClient
 
+/** Why a video stopped, which is what decides whether the operator is offered another go at it. */
+enum class PlaybackFailure {
+    /** The admin session is gone. Nothing plays again until the operator signs back in. */
+    SESSION_LOST,
+
+    /** The CDN turned the link itself down. Asking for the same url again cannot help. */
+    LINK_DEAD,
+
+    /** A blip: a dropped connection, a server hiccup, a decoder that fell over. Worth a retry. */
+    TRANSIENT
+}
+
 /**
  * Two players, so the conversation on screen keeps playing while the next one pre-buffers and
  * a swipe starts instantly. A player per page would exhaust decoders; a single player would
@@ -26,11 +38,11 @@ import okhttp3.OkHttpClient
 class PlayerManager(
     context: Context,
     okHttpClient: OkHttpClient,
-    /** Reports a failed video by its (proxy) url, with true when the session itself is dead. */
-    private val onError: (url: String, unauthorized: Boolean) -> Unit
+    /** Reports a failed video by its (proxy) url, with what kind of failure it was. */
+    private val onError: (url: String, failure: PlaybackFailure) -> Unit
 ) {
 
-    private val players: List<ExoPlayer> = List(POOL_SIZE) { slot ->
+    private val players: List<ExoPlayer> = List(POOL_SIZE) {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(
                 // The shared OkHttp client carries the admin session cookie, which /admin/media-proxy requires.
@@ -39,15 +51,19 @@ class PlayerManager(
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_ONE
-                // Looks like a no-op, and is load-bearing: ExoPlayer only builds its effects
-                // pipeline if setVideoEffects is called at least once before prepare(). Without
-                // this, switching the watermark on later goes silently nowhere.
-                setVideoEffects(emptyList())
                 addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        val url = slotUrls[slot] ?: return
-                        val status = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-                        onError(url, status == 401)
+                    // onEvents rather than onPlayerError, because the error reaches the main
+                    // looper well after the load that raised it — long enough for the slot to
+                    // have been handed a different video in the meantime, which is what used to
+                    // get the blame. Reading the error and the item together off the same player
+                    // closes that: prepare() clears playerError, so one still standing here can
+                    // only belong to the item still loaded.
+                    override fun onEvents(player: Player, events: Player.Events) {
+                        if (!events.contains(Player.EVENT_PLAYER_ERROR)) return
+                        val error = player.playerError ?: return
+                        val url = player.currentMediaItem
+                            ?.localConfiguration?.uri?.toString() ?: return
+                        onError(url, classify(error))
                     }
                 })
             }
@@ -63,8 +79,18 @@ class PlayerManager(
 
     private var watermarkHandle: String? = null
 
-    /** What each slot's video effects were last set to, so they are only rebuilt when they change. */
+    /**
+     * The watermark each slot was *prepared* with, which is not the same as the one it was last
+     * asked for: video effects only take hold when they are set before prepare().
+     */
     private val slotWatermark = arrayOfNulls<String>(POOL_SIZE)
+
+    /**
+     * Whether a slot has ever been handed video effects. The first call commits that player to
+     * ExoPlayer's GL pipeline for good, and the pipeline renders into a SurfaceTexture that only
+     * drains while a PlayerView is attached — so a committed player must never pre-buffer.
+     */
+    private val slotUsesGl = BooleanArray(POOL_SIZE)
 
     /** The player currently holding [key], claiming the least recently used slot if it has none. */
     fun playerFor(key: String): ExoPlayer = players[slotFor(key)]
@@ -103,27 +129,60 @@ class PlayerManager(
     /** Loads [url] on this conversation's player and starts it, pausing every other player. */
     fun play(key: String, url: String) {
         val index = slotFor(key)
-        val player = players[index]
-        if (slotUrls[index] != url) {
-            player.setMediaItem(MediaItem.fromUri(url))
-            player.prepare()
-            slotUrls[index] = url
-        }
-        players.forEachIndexed { i, other -> if (i != index) other.playWhenReady = false }
-        player.playWhenReady = true
         visibleSlot = index
-        applyWatermark()
+        load(index, url, watermarkHandle)
+        players.forEachIndexed { i, other -> if (i != index) other.playWhenReady = false }
+        players[index].playWhenReady = true
     }
 
-    /** Buffers the next conversation's first video without starting playback. */
+    /**
+     * Buffers the next conversation's first video without starting playback.
+     *
+     * Never with a watermark, and never on a slot already committed to the GL pipeline: off
+     * screen there is no PlayerView, so nothing drains that pipeline's output and the player
+     * wedges for good after a couple of dozen frames — which is what used to leave a healthy
+     * video showing black once it was swiped to. A skipped pre-buffer only costs a slower first
+     * frame, because [play] loads the slot properly when it arrives on screen.
+     */
     fun preload(key: String, url: String) {
         val index = slotFor(key)
-        if (slotUrls[index] == url) return
+        if (slotUsesGl[index]) return
+        players[index].playWhenReady = false
+        load(index, url, watermark = null)
+    }
+
+    /**
+     * Points slot [index] at [url] with [watermark] over it, re-preparing only when something
+     * actually changed.
+     *
+     * A standing error counts as a change: a slot that failed once kept the url it failed on and
+     * so was never prepared again, leaving the operator with black for the rest of the session
+     * even when the video behind it was perfectly good.
+     */
+    private fun load(index: Int, url: String, watermark: String?) {
         val player = players[index]
-        player.playWhenReady = false
-        player.setMediaItem(MediaItem.fromUri(url))
+        val failed = player.playerError != null
+        if (slotUrls[index] == url && slotWatermark[index] == watermark && !failed) return
+
+        // Toggling the watermark re-prepares the player, and should not cost the operator their
+        // place in the video they were watching.
+        val resumeAt = if (slotUrls[index] == url && !failed) player.currentPosition else 0L
+
+        // Only ever called when there is something to say. The first call is what commits this
+        // player to the GL pipeline, so a slot that has never carried a watermark is left on the
+        // plain decoder path, where having no surface attached costs nothing.
+        if (watermark != null || slotWatermark[index] != null) {
+            slotUsesGl[index] = true
+            player.setVideoEffects(
+                if (watermark == null) emptyList()
+                else listOf(OverlayEffect(listOf(WanderingWatermark(watermark))))
+            )
+        }
+
+        player.setMediaItem(MediaItem.fromUri(url), resumeAt)
         player.prepare()
         slotUrls[index] = url
+        slotWatermark[index] = watermark
     }
 
     /**
@@ -132,32 +191,42 @@ class PlayerManager(
      * Deliberately the same [WanderingWatermark] the export uses rather than something drawn over
      * the player in Compose: a preview that is a re-implementation is a preview that can quietly
      * stop matching what actually gets written to the file.
+     *
+     * Only the slot on screen is touched. The other one is pre-buffering with no surface of its
+     * own, and it picks the watermark up when [play] brings it forward.
      */
     fun setWatermark(handle: String?) {
+        if (watermarkHandle == handle) return
         watermarkHandle = handle
-        applyWatermark()
+        val index = visibleSlot.takeIf { it >= 0 } ?: return
+        val url = slotUrls[index] ?: return
+        val resume = players[index].playWhenReady
+        load(index, url, handle)
+        players[index].playWhenReady = resume
     }
 
     /**
-     * Puts the overlay on the slot being watched and takes it off the other one. The pre-buffering
-     * player is off screen, and running a GL pass over frames nobody is looking at is a waste of
-     * battery.
-     *
-     * Each slot gets its own [WanderingWatermark]: the overlay caches a texture against the GL
-     * context it runs in, and two pipelines cannot share one.
+     * A 401 is the session dying. Any other 4xx is the CDN turning the link itself down, which is
+     * the genuinely expired case. Everything else — a 5xx, a dropped connection, a decoder giving
+     * up — says nothing about the video, so it stays retryable instead of being written off as
+     * expired for the rest of the session.
      */
-    private fun applyWatermark() {
-        players.forEachIndexed { slot, player ->
-            val wanted = if (slot == visibleSlot) watermarkHandle else null
-            // Rebuilding the effect list restarts the video pipeline, so only touch it on a change.
-            if (slotWatermark[slot] == wanted) return@forEachIndexed
-            slotWatermark[slot] = wanted
-            player.setVideoEffects(
-                if (wanted == null) emptyList()
-                else listOf(OverlayEffect(listOf(WanderingWatermark(wanted))))
-            )
+    private fun classify(error: PlaybackException): PlaybackFailure {
+        val status = httpStatus(error) ?: return PlaybackFailure.TRANSIENT
+        return when {
+            status == 401 -> PlaybackFailure.SESSION_LOST
+            status in 400..499 -> PlaybackFailure.LINK_DEAD
+            else -> PlaybackFailure.TRANSIENT
         }
     }
+
+    /** media3 wraps the http failure a few layers down, so the whole cause chain gets a look. */
+    private fun httpStatus(error: PlaybackException): Int? =
+        generateSequence(error.cause) { it.cause.takeIf { next -> next !== it } }
+            .take(MAX_CAUSE_DEPTH)
+            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+            .firstOrNull()
+            ?.responseCode
 
     fun pauseAll() = players.forEach { it.playWhenReady = false }
 
@@ -165,5 +234,8 @@ class PlayerManager(
 
     private companion object {
         const val POOL_SIZE = 2
+
+        /** Cause chains are short; the bound is only there so a self-referencing one cannot spin. */
+        const val MAX_CAUSE_DEPTH = 8
     }
 }

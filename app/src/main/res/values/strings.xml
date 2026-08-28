@@ -18,6 +18,8 @@
     <string name="loading">Yükleniyor…</string>
     <string name="empty_gallery">Videolu konuşma bulunamadı</string>
     <string name="video_expired">Video süresi doldu</string>
+    <string name="video_failed">Video yüklenemedi</string>
+    <string name="video_retry">Tekrar dene</string>
     <string name="end_of_feed">Son müşteriye ulaşıldı</string>
     <string name="logout">Çıkış</string>
 
