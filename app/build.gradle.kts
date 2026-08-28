@@ -77,6 +77,7 @@ dependencies {
     implementation(libs.onnxruntime.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(project(":whisper"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.junit)

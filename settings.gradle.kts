@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "DMRandevuGallery"
 include(":app")
+include(":whisper")
