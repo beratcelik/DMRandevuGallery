@@ -59,6 +59,7 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -325,11 +326,16 @@ fun ConversationPage(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            // Yields to the filters rather than pushing them off the screen: a long handle like
+            // @ismailakbaba_gayrimenkul otherwise takes the whole width and the last toggle
+            // simply is not there.
+            Column(modifier = Modifier.weight(1f, fill = false)) {
                 Text(
                     text = "@${conversation.clientName}",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 // Per-video, so it follows horizontal swipes within the conversation.
                 formatSentAt(conversation.sentAt(mediaPager.currentPage))?.let { sentAt ->
@@ -343,6 +349,7 @@ fun ConversationPage(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Up here rather than in the action row below, which is already tight on width.
                 IconButton(
+                    modifier = Modifier.size(FILTER_TOGGLE),
                     onClick = {
                         viewModel.setBlurFaces(!blurFaces)
                         Toast.makeText(
@@ -361,7 +368,7 @@ fun ConversationPage(
                 Box(
                     // Tap switches the filter; holding switches how hard it looks. Tucked behind
                     // a long press because it is a knob to set once, not one to reach for daily.
-                    Modifier.combinedClickable(
+                    Modifier.size(FILTER_TOGGLE).combinedClickable(
                         onClick = {
                             viewModel.setBlurPlates(!blurPlates)
                             Toast.makeText(
@@ -403,6 +410,7 @@ fun ConversationPage(
                     }
                 }
                 IconButton(
+                    modifier = Modifier.size(FILTER_TOGGLE),
                     onClick = {
                         viewModel.setWatermark(!watermark)
                         Toast.makeText(
@@ -419,6 +427,7 @@ fun ConversationPage(
                     )
                 }
                 IconButton(
+                    modifier = Modifier.size(FILTER_TOGGLE),
                     enabled = censorDownload == null,
                     onClick = {
                         if (censorAudio) {
@@ -709,6 +718,12 @@ private const val HOLD_THRESHOLD_MS = 250L
 
 /** How much faster a held-down video runs. */
 private const val HOLD_SPEED = 3f
+
+/**
+ * Narrower than the default 48dp button. Four filters and the waiting count have to sit beside a
+ * customer handle, and at the default the last one lands off the edge of the screen.
+ */
+private val FILTER_TOGGLE = 42.dp
 
 /**
  * One compact action in the bottom bar. Four of these have to share the width, so the label

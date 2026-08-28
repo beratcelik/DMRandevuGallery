@@ -48,7 +48,7 @@ class FaceBlurExportTest {
         val input = File(context.cacheDir, "test_input.mp4").also { sample.copyTo(it, true) }
         val output = File(context.cacheDir, "test_output.mp4").also { it.delete() }
 
-        val result = VideoExporter(context)
+        val result = VideoExporter(context, noCensor(context))
             .export(input, output, ExportOptions(blurFaces = true)) {}
         assumeTrue(
             "No faces detected in the sample — use a clip with a visible face",
@@ -125,4 +125,11 @@ class FaceBlurExportTest {
          */
         const val MAX_LEAK_FRACTION = 0.15
     }
+
+    /** These tests exercise the picture, not the audio; the censor is never switched on. */
+    private fun noCensor(context: android.content.Context) =
+        com.dmrandevu.gallery.media.censor.AudioCensor(
+            context,
+            com.dmrandevu.gallery.media.censor.CensorModels(context, okhttp3.OkHttpClient())
+        )
 }

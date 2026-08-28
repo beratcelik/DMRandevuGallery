@@ -39,13 +39,14 @@ target_compile_definitions(whisper PRIVATE WHISPER_VERSION="${WHISPER_VERSION}")
 target_compile_options(whisper PRIVATE -march=armv8.2-a+fp16)
 set(GGML_COMPILE_OPTIONS -march=armv8.2-a+fp16)
 
-if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_options(whisper PRIVATE -O3)
-    target_compile_options(whisper PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
-    target_compile_options(whisper PRIVATE -ffunction-sections -fdata-sections)
-    target_link_options(whisper PRIVATE -Wl,--gc-sections)
-    target_link_options(whisper PRIVATE -Wl,--exclude-libs,ALL)
-endif ()
+# Unconditional: the Gradle side forces a Release configuration, but if that is ever lost this
+# still must not fall back to an unoptimised build — at -O0 a single recognition pass took ten
+# minutes on the operator's phone instead of seconds.
+target_compile_options(whisper PRIVATE -O3)
+target_compile_options(whisper PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
+target_compile_options(whisper PRIVATE -ffunction-sections -fdata-sections)
+target_link_options(whisper PRIVATE -Wl,--gc-sections)
+target_link_options(whisper PRIVATE -Wl,--exclude-libs,ALL)
 
 FetchContent_Declare(ggml SOURCE_DIR ${WHISPER_LIB_DIR}/ggml)
 FetchContent_MakeAvailable(ggml)

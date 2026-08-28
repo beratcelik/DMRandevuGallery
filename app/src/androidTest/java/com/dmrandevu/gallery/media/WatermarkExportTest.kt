@@ -37,7 +37,7 @@ class WatermarkExportTest {
         val input = File(context.cacheDir, "wm_input.mp4").also { sample.copyTo(it, true) }
         val output = File(context.cacheDir, "wm_output.mp4").also { it.delete() }
 
-        val result = VideoExporter(context).export(
+        val result = VideoExporter(context, noCensor(context)).export(
             input,
             output,
             ExportOptions(watermarkHandle = "trafik_cezasi")
@@ -73,7 +73,7 @@ class WatermarkExportTest {
         val input = File(context.cacheDir, "wm_input.mp4").also { sample.copyTo(it, true) }
         val output = File(context.cacheDir, "wm_none.mp4").also { it.delete() }
 
-        val result = VideoExporter(context).export(input, output, ExportOptions.NONE) {}
+        val result = VideoExporter(context, noCensor(context)).export(input, output, ExportOptions.NONE) {}
 
         assertEquals(VideoExporter.Result.NothingToDo, result)
         assertTrue("Nothing was asked for, so nothing should have been written", !output.exists())
@@ -103,4 +103,11 @@ class WatermarkExportTest {
             retriever.release()
         }
     }
+
+    /** These tests exercise the picture, not the audio; the censor is never switched on. */
+    private fun noCensor(context: android.content.Context) =
+        com.dmrandevu.gallery.media.censor.AudioCensor(
+            context,
+            com.dmrandevu.gallery.media.censor.CensorModels(context, okhttp3.OkHttpClient())
+        )
 }

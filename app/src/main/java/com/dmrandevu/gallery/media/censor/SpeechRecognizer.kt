@@ -1,5 +1,6 @@
 package com.dmrandevu.gallery.media.censor
 
+import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import com.dmrandevu.whisper.WhisperContext
 import java.io.Closeable
@@ -44,20 +45,22 @@ class SpeechRecognizer(
         tiers: Set<ProfanityLexicon.Tier> = setOf(ProfanityLexicon.Tier.PROFANITY),
         onProgress: (Float) -> Unit
     ): Result {
-        val passes = PASSES
         var done = 0f
+        var expected = BASE_PASSES.size.toFloat()
         fun step(): Float {
             done += 1f
-            return done / passes.size
+            return (done / expected).coerceAtMost(1f)
         }
 
         // The timing pass first: everything else is measured against its word list.
-        val timingPass = passes.first { it.carriesTiming }
+        val timingPass = BASE_PASSES.first { it.carriesTiming }
+        val startedAt = System.currentTimeMillis()
         val words = try {
             timedWords(audio, timingPass)
         } catch (e: WhisperContext.TranscriptionFailedException) {
             throw RecognitionFailedException("Recognition failed", e)
         }
+        Log.i(TAG, "timing pass: ${words.size} words in ${System.currentTimeMillis() - startedAt} ms")
         onProgress(step())
 
         if (words.isEmpty()) return Result(emptyList(), emptySet())
@@ -65,7 +68,21 @@ class SpeechRecognizer(
         val hits = lexicon.hits(words.map { it.text }, tiers).toMutableSet()
         val timingText = words.map { it.text }
 
-        for (pass in passes.filterNot { it.carriesTiming }) {
+        // The larger model is three times slower and is only worth its minutes in the case the
+        // spike actually found it useful: base occasionally goes deaf on a clip and returns
+        // nothing but "[MÜZİK ÇALIYOR]" where small transcribes it in full. When base has clearly
+        // heard the speech, small adds four minutes to find the same words — and on the one clip
+        // with real swearing it was small that sanitised it, not base.
+        val deaf = words.size < DEAF_THRESHOLD
+        val remaining = BASE_PASSES.filterNot { it.carriesTiming } +
+            if (deaf) SMALL_PASSES else emptyList()
+        if (deaf) {
+            expected += SMALL_PASSES.size
+            Log.i(TAG, "only ${words.size} words from base; escalating to the larger model")
+        }
+
+        for (pass in remaining) {
+            val passStartedAt = System.currentTimeMillis()
             val heard = try {
                 detectionText(audio, pass)
             } catch (e: WhisperContext.TranscriptionFailedException) {
@@ -76,6 +93,11 @@ class SpeechRecognizer(
                     hits.add(pair.timingIndex)
                 }
             }
+            Log.i(
+                TAG,
+                "${pass.model.fileName} at ${pass.speed}x: ${heard.size} words in " +
+                    "${System.currentTimeMillis() - passStartedAt} ms"
+            )
             onProgress(step())
         }
         return Result(words, hits)
@@ -186,17 +208,31 @@ class SpeechRecognizer(
     )
 
     private companion object {
+        const val TAG = "CensorAsr"
         val WHITESPACE = Regex("\\s+")
 
         /**
-         * Grouped by model so each one is loaded once. Base carries the clock because it is the
-         * smaller of the two and the one measured to transcribe swearing most faithfully; small
-         * is there because it hears speech base misses entirely.
+         * Below this many words, base is taken to have missed the speech rather than to have
+         * heard a quiet clip, and the larger model is brought in.
          */
-        val PASSES = listOf(
+        const val DEAF_THRESHOLD = 8
+
+        /**
+         * Base carries the clock: it is the quicker of the two and the one measured to transcribe
+         * swearing most faithfully — on the operator's own clip, small wrote "Ama ne kodumu" for
+         * the phrase base heard correctly.
+         *
+         * Timed on a Galaxy S22+ over 35 seconds of audio: the timestamped pass takes about 17
+         * seconds and each detection pass 25, so all three together are near a minute.
+         */
+        val BASE_PASSES = listOf(
             Pass(CensorModels.Model.WHISPER_BASE, speed = 1f, carriesTiming = true),
             Pass(CensorModels.Model.WHISPER_BASE, speed = 1f, carriesTiming = false),
-            Pass(CensorModels.Model.WHISPER_BASE, speed = 0.75f, carriesTiming = false),
+            Pass(CensorModels.Model.WHISPER_BASE, speed = 0.75f, carriesTiming = false)
+        )
+
+        /** Run only when base came back with almost nothing; roughly three minutes more. */
+        val SMALL_PASSES = listOf(
             Pass(CensorModels.Model.WHISPER_SMALL, speed = 1f, carriesTiming = false),
             Pass(CensorModels.Model.WHISPER_SMALL, speed = 0.75f, carriesTiming = false)
         )

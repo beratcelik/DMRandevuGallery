@@ -18,6 +18,17 @@ android {
             // arm64 phone this runs on has.
             abiFilters += listOf("arm64-v8a")
         }
+
+        externalNativeBuild {
+            cmake {
+                // Optimised even in a debug build. This is a compute kernel, and at the -O0 a
+                // debug variant would otherwise give it, ggml runs tens of times slower —
+                // measured on the phone as ten minutes for one recognition pass that should
+                // take well under one. Nobody debugs this native code from the app, and the
+                // Kotlin wrapped around it stays debuggable either way.
+                arguments += listOf("-DCMAKE_BUILD_TYPE=Release")
+            }
+        }
     }
 
     externalNativeBuild {

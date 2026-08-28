@@ -43,7 +43,7 @@ class PlateBlurExportTest {
         val input = File(context.cacheDir, "plate_input.mp4").also { sample.copyTo(it, true) }
         val output = File(context.cacheDir, "plate_output.mp4").also { it.delete() }
 
-        val result = VideoExporter(context)
+        val result = VideoExporter(context, noCensor(context))
             .export(input, output, ExportOptions(blurPlates = true)) {}
         assumeTrue(
             "No plates found in the sample — use a clip with a visible plate",
@@ -121,4 +121,11 @@ class PlateBlurExportTest {
          */
         const val MAX_DETAIL_KEPT = 0.7
     }
+
+    /** These tests exercise the picture, not the audio; the censor is never switched on. */
+    private fun noCensor(context: android.content.Context) =
+        com.dmrandevu.gallery.media.censor.AudioCensor(
+            context,
+            com.dmrandevu.gallery.media.censor.CensorModels(context, okhttp3.OkHttpClient())
+        )
 }
