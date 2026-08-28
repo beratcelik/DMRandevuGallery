@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(project(":whisper"))
+    implementation(libs.jtransforms)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.junit)
