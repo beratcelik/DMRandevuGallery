@@ -32,6 +32,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Theaters
+import kotlinx.coroutines.CancellationException
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -115,6 +118,9 @@ fun ConversationPage(
     val blurPlates by viewModel.blurPlates.collectAsStateWithLifecycle()
     val fastPlates by viewModel.fastPlates.collectAsStateWithLifecycle()
     val watermark by viewModel.watermark.collectAsStateWithLifecycle()
+    val censorAudio by viewModel.censorAudio.collectAsStateWithLifecycle()
+    // Non-null only while the models are coming down, which is a one-off on first use.
+    var censorDownload by remember { mutableStateOf<Int?>(null) }
     // Exports share one cache directory and one progress readout, so they have to run one at a
     // time — a second one starting would wipe the first one's working files out from under it.
     val exporting = downloading || sharingStory || sharingReels
@@ -411,6 +417,60 @@ fun ConversationPage(
                         contentDescription = stringResource(R.string.watermark_toggle),
                         tint = if (watermark) Color.White else Color.White.copy(alpha = 0.45f)
                     )
+                }
+                IconButton(
+                    enabled = censorDownload == null,
+                    onClick = {
+                        if (censorAudio) {
+                            viewModel.setCensorAudio(false)
+                            Toast.makeText(context, R.string.censor_audio_off, Toast.LENGTH_SHORT)
+                                .show()
+                            return@IconButton
+                        }
+                        // The models are a third of a gigabyte and are not in the app, so the
+                        // first time this is switched on it has to fetch them. Switched on only
+                        // once they are all here: a half-downloaded model would fail every
+                        // export instead of censoring anything.
+                        scope.launch {
+                            try {
+                                censorDownload = 0
+                                ServiceLocator.censorModels.ensureAvailable { fraction ->
+                                    censorDownload = (fraction * 100).toInt()
+                                }
+                                viewModel.setCensorAudio(true)
+                                Toast.makeText(
+                                    context, R.string.censor_audio_on, Toast.LENGTH_LONG
+                                ).show()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context, R.string.censor_models_failed, Toast.LENGTH_LONG
+                                ).show()
+                            } finally {
+                                censorDownload = null
+                            }
+                        }
+                    }
+                ) {
+                    val progress = censorDownload
+                    if (progress != null) {
+                        Text(
+                            text = stringResource(R.string.censor_models_downloading, progress),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (censorAudio) {
+                                Icons.AutoMirrored.Filled.VolumeOff
+                            } else {
+                                Icons.AutoMirrored.Filled.VolumeUp
+                            },
+                            contentDescription = stringResource(R.string.censor_audio_toggle),
+                            tint = if (censorAudio) Color.White else Color.White.copy(alpha = 0.45f)
+                        )
+                    }
                 }
                 // How many customers are still waiting. The dots below already say how many
                 // videos this one has, so the per-video position is not repeated here.

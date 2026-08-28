@@ -166,8 +166,11 @@ fun CaptionSheet(
                                 ExportOptions(
                                     blurFaces = settings.blurFaces,
                                     blurPlates = settings.blurPlates,
+                                    fastPlates = settings.fastPlates,
                                     watermarkHandle = settings.igUsername
-                                        .takeIf { settings.watermark && it.isNotBlank() }
+                                        .takeIf { settings.watermark && it.isNotBlank() },
+                                    censorAudio = settings.censorAudio,
+                                    censorInsults = settings.censorInsults
                                 )
                             ) { shareProgress = it }
                             // Instagram drops EXTRA_TEXT, so the caption travels via the clipboard —

@@ -12,10 +12,14 @@ data class ExportOptions(
     /** Whether the plate pass runs at the quicker, less thorough setting. */
     val fastPlates: Boolean = true,
     /** Account handle to burn into the picture, or null to leave the video unmarked. */
-    val watermarkHandle: String? = null
+    val watermarkHandle: String? = null,
+    /** Beep over Turkish swearing, leaving the background sound playing underneath. */
+    val censorAudio: Boolean = false,
+    /** Whether milder insults are beeped too, or only outright profanity. */
+    val censorInsults: Boolean = false
 ) {
     val changesNothing: Boolean
-        get() = !blurFaces && !blurPlates && watermarkHandle == null
+        get() = !blurFaces && !blurPlates && watermarkHandle == null && !censorAudio
 
     companion object {
         val NONE = ExportOptions()

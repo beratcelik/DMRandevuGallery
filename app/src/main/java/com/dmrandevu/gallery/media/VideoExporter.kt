@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.transformer.Composition
@@ -22,6 +23,11 @@ import com.dmrandevu.gallery.media.blur.FaceFinder
 import com.dmrandevu.gallery.media.blur.PlateFinder
 import com.dmrandevu.gallery.media.blur.RegionFinder
 import com.dmrandevu.gallery.media.blur.RegionScanner
+import com.dmrandevu.gallery.media.censor.AudioCensor
+import com.dmrandevu.gallery.media.censor.CensorPlan
+import com.dmrandevu.gallery.media.censor.CensorWindow
+import com.dmrandevu.gallery.media.censor.PatchingAudioProcessor
+import com.dmrandevu.gallery.media.censor.ProfanityLexicon
 import com.dmrandevu.gallery.media.watermark.WanderingWatermark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +49,10 @@ import kotlin.coroutines.resumeWithException
  * pass throws instead.
  */
 @UnstableApi
-class VideoExporter(private val context: Context) {
+class VideoExporter(
+    private val context: Context,
+    private val audioCensor: AudioCensor
+) {
 
     sealed interface Result {
         /**
@@ -51,7 +60,12 @@ class VideoExporter(private val context: Context) {
          * when no blurring was asked for; it is worth handing back rather than re-running, since
          * a second scan would not agree with the first in every detail.
          */
-        data class Exported(val file: File, val blurred: BlurTimeline?) : Result
+        data class Exported(
+            val file: File,
+            val blurred: BlurTimeline?,
+            /** The stretches that were beeped, or null when no censoring was asked for. */
+            val censored: List<CensorWindow>? = null
+        ) : Result
 
         /** Nothing to change, so the input was left alone — the caller delivers it as-is. */
         data object NothingToDo : Result
@@ -81,7 +95,16 @@ class VideoExporter(private val context: Context) {
                 add(PlateFinder(context, PlateFinder.inputSizeFor(options.fastPlates)))
             }
         }
-        val scanShare = if (finders.isEmpty()) 0 else SCAN_SHARE
+
+        // The two analysis passes share the run-up to the encode. Each takes the whole of it when
+        // it is the only one asked for, so switching the censor off leaves the old numbers alone.
+        val scanShare = if (finders.isEmpty()) 0 else if (options.censorAudio) SPLIT_SHARE else SCAN_SHARE
+        val censorFloor = if (options.censorAudio) {
+            if (finders.isEmpty()) SCAN_SHARE else SCAN_SHARE + SPLIT_SHARE
+        } else {
+            scanShare
+        }
+
         val blurred = if (finders.isEmpty()) {
             null
         } else {
@@ -92,16 +115,43 @@ class VideoExporter(private val context: Context) {
             }
         }
 
+        val plan = if (!options.censorAudio) {
+            null
+        } else {
+            wrapFailures("Censoring the audio failed") {
+                audioCensor.analyze(input, tiersFor(options)) { percent ->
+                    onProgress(scanShare + percent * (censorFloor - scanShare) / 100)
+                }
+            }
+        }
+
         val effects = buildList<Effect> {
             // An empty timeline means nothing to cover; adding the effect anyway would re-encode
             // the whole video to change nothing.
             if (blurred != null && !blurred.isEmpty) add(BlurEffect(blurred))
             options.watermarkHandle?.let { add(OverlayEffect(listOf(WanderingWatermark(it)))) }
         }
-        if (effects.isEmpty()) return Result.NothingToDo
+        val processors = buildList<AudioProcessor> {
+            if (plan != null && !plan.isEmpty) add(PatchingAudioProcessor(plan))
+        }
+        // Nothing found anywhere: the caller hands over the original, untouched and un-re-encoded.
+        if (effects.isEmpty() && processors.isEmpty()) return Result.NothingToDo
 
-        wrapFailures("Export failed") { runExport(input, output, effects, scanShare, onProgress) }
-        return Result.Exported(output, blurred)
+        wrapFailures("Export failed") {
+            runExport(input, output, effects, processors, censorFloor, onProgress)
+        }
+        // Raised here rather than mid-stream: media3 swallows what a processor throws while the
+        // encode is running, and a mis-timed beep must fail the export, not ship.
+        (processors.firstOrNull() as? PatchingAudioProcessor)?.failureOrNull()?.let {
+            output.delete()
+            throw ExportFailedException("Censoring the audio failed", it)
+        }
+        return Result.Exported(output, blurred, plan?.windows)
+    }
+
+    private fun tiersFor(options: ExportOptions) = buildSet {
+        add(ProfanityLexicon.Tier.PROFANITY)
+        if (options.censorInsults) add(ProfanityLexicon.Tier.INSULT)
     }
 
     private suspend fun <T> wrapFailures(message: String, block: suspend () -> T): T = try {
@@ -122,16 +172,19 @@ class VideoExporter(private val context: Context) {
         input: File,
         output: File,
         effects: List<Effect>,
+        audioProcessors: List<AudioProcessor>,
         progressFloor: Int,
         onProgress: (Int) -> Unit
     ) = withContext(Dispatchers.Main) {
         val editedMediaItem = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(input)))
-            .setEffects(Effects(/* audioProcessors= */ emptyList(), effects))
+            .setEffects(Effects(audioProcessors, effects))
             .build()
         val sequence = EditedMediaItemSequence.Builder(editedMediaItem).build()
         val composition = Composition.Builder(sequence)
-            // No audio effects, so the audio track is copied across rather than re-encoded.
-            .setTransmuxAudio(true)
+            // Copies the audio across untouched when nothing is censoring it. With a processor
+            // in the list media3 transcodes regardless of this flag — for a single-item
+            // composition it never consults it — but saying so keeps the intent on the record.
+            .setTransmuxAudio(audioProcessors.isEmpty())
             // The shaders are ES 2.0 and cannot read HDR input. Tone mapping is a no-op for the
             // SDR videos Instagram actually delivers.
             .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
@@ -197,8 +250,11 @@ class VideoExporter(private val context: Context) {
     }
 
     private companion object {
-        /** Share of the progress bar the scan gets; the export takes the rest. */
+        /** Share of the progress bar one analysis pass gets; the export takes the rest. */
         const val SCAN_SHARE = 35
+
+        /** What each gets when the picture and the audio are both being analysed. */
+        const val SPLIT_SHARE = 20
         const val PROGRESS_POLL_MS = 500L
     }
 }

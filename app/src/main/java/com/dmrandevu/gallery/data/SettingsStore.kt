@@ -36,6 +36,22 @@ class SettingsStore(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_FAST_PLATES, DEFAULT_FAST_PLATES)
         set(value) = prefs.edit { putBoolean(KEY_FAST_PLATES, value) }
 
+    /**
+     * Beep over Turkish swearing in every exported video. Off by default: it needs a third of a
+     * gigabyte of models downloaded before it can do anything.
+     */
+    var censorAudio: Boolean
+        get() = prefs.getBoolean(KEY_CENSOR_AUDIO, DEFAULT_CENSOR_AUDIO)
+        set(value) = prefs.edit { putBoolean(KEY_CENSOR_AUDIO, value) }
+
+    /**
+     * Beep milder insults too, not only outright profanity. Off by default — the spike had
+     * "manyak" firing on a clip where nobody swore.
+     */
+    var censorInsults: Boolean
+        get() = prefs.getBoolean(KEY_CENSOR_INSULTS, DEFAULT_CENSOR_INSULTS)
+        set(value) = prefs.edit { putBoolean(KEY_CENSOR_INSULTS, value) }
+
     /** Drift the account handle across every exported video, so a repost still shows whose it is. */
     var watermark: Boolean
         get() = prefs.getBoolean(KEY_WATERMARK, DEFAULT_WATERMARK)
@@ -48,6 +64,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val DEFAULT_BLUR_PLATES = false
         const val DEFAULT_FAST_PLATES = true
         const val DEFAULT_WATERMARK = false
+        const val DEFAULT_CENSOR_AUDIO = false
+        const val DEFAULT_CENSOR_INSULTS = false
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_ADMIN = "admin_username"
         private const val KEY_IG = "ig_username"
@@ -55,5 +73,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val KEY_BLUR_PLATES = "blur_plates"
         private const val KEY_FAST_PLATES = "fast_plates"
         private const val KEY_WATERMARK = "watermark"
+        private const val KEY_CENSOR_AUDIO = "censor_audio"
+        private const val KEY_CENSOR_INSULTS = "censor_insults"
     }
 }
