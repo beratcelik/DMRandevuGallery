@@ -21,8 +21,32 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
 
     class TranscriptionFailedException(message: String) : Exception(message)
 
-    /** One segment as whisper reported it. In [noTimestamps] mode there is only ever one. */
-    data class Segment(val text: String, val startMs: Long, val endMs: Long)
+    /**
+     * One segment as whisper reported it. In [noTimestamps] mode there is only ever one.
+     *
+     * [alignedStartMs] is where cross-attention alignment puts it, which is the one to trust;
+     * [startMs] comes from the decoder's own timestamp tokens and collapses onto window
+     * boundaries. Null when the model was loaded without alignment.
+     */
+    data class Segment(
+        val text: String,
+        val startMs: Long,
+        val endMs: Long,
+        val alignedStartMs: Long? = null
+    ) {
+        /** The best timing available for this segment. */
+        val bestStartMs: Long get() = alignedStartMs ?: startMs
+    }
+
+    /**
+     * Which set of attention heads alignment should read. Fixed per model architecture — the
+     * wrong one produces confident nonsense rather than an error.
+     */
+    enum class Alignment(val preset: Int) {
+        NONE(0),
+        BASE(6),
+        SMALL(8)
+    }
 
     /**
      * Transcribes 16 kHz mono samples.
@@ -33,12 +57,14 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
     suspend fun transcribe(
         samples: FloatArray,
         noTimestamps: Boolean,
-        threads: Int = defaultThreads()
+        threads: Int = defaultThreads(),
+        beamSize: Int = DEFAULT_BEAM_SIZE,
+        noContext: Boolean = false
     ): List<Segment> = withContext(worker) {
         currentCoroutineContext().ensureActive()
         check(contextPtr != 0L) { "Model already closed" }
 
-        val result = WhisperLib.fullTranscribe(contextPtr, threads, samples, noTimestamps)
+        val result = WhisperLib.fullTranscribe(contextPtr, threads, samples, noTimestamps, beamSize, noContext)
         when (result) {
             0 -> Unit
             ABORTED -> {
@@ -51,11 +77,13 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
         }
 
         (0 until WhisperLib.segmentCount(contextPtr)).map { index ->
+            val aligned = WhisperLib.segmentAlignedStart(contextPtr, index)
             Segment(
                 text = WhisperLib.segmentText(contextPtr, index),
                 // whisper counts in hundredths of a second.
                 startMs = WhisperLib.segmentStart(contextPtr, index) * 10,
-                endMs = WhisperLib.segmentEnd(contextPtr, index) * 10
+                endMs = WhisperLib.segmentEnd(contextPtr, index) * 10,
+                alignedStartMs = if (aligned >= 0) aligned * 10 else null
             )
         }
     }
@@ -77,14 +105,24 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
     companion object {
         private const val ABORTED = -2
 
+        /**
+         * Matches whisper.cpp's own command line tool. Greedy decoding is quicker but its token
+         * timestamps collapse onto the 30-second window boundaries, which puts the beep before
+         * the word rather than over it.
+         */
+        const val DEFAULT_BEAM_SIZE = 5
+
         /** Serialises every call into the native context; see the class comment. */
         private val worker = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "whisper").apply { isDaemon = true }
         }.asCoroutineDispatcher()
 
-        suspend fun load(model: File): WhisperContext = withContext(worker) {
+        suspend fun load(
+            model: File,
+            alignment: Alignment = Alignment.NONE
+        ): WhisperContext = withContext(worker) {
             require(model.exists()) { "Model file missing: ${model.absolutePath}" }
-            val ptr = WhisperLib.initContext(model.absolutePath)
+            val ptr = WhisperLib.initContext(model.absolutePath, alignment.preset)
             if (ptr == 0L) throw TranscriptionFailedException("Could not load ${model.name}")
             WhisperContext(ptr)
         }

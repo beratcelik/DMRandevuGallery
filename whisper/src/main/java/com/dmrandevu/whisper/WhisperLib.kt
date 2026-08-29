@@ -7,7 +7,7 @@ internal class WhisperLib {
             System.loadLibrary("whisper")
         }
 
-        external fun initContext(modelPath: String): Long
+        external fun initContext(modelPath: String, aheadsPreset: Int): Long
         external fun freeContext(contextPtr: Long)
         external fun setAbort(abort: Boolean)
 
@@ -22,7 +22,9 @@ internal class WhisperLib {
             contextPtr: Long,
             numThreads: Int,
             audioData: FloatArray,
-            noTimestamps: Boolean
+            noTimestamps: Boolean,
+            beamSize: Int,
+            noContext: Boolean
         ): Int
 
         external fun segmentCount(contextPtr: Long): Int
@@ -30,6 +32,9 @@ internal class WhisperLib {
 
         /** Hundredths of a second, which is whisper's own unit. */
         external fun segmentStart(contextPtr: Long, index: Int): Long
+
+        /** Where alignment puts the segment, or -1 when it was not computed. */
+        external fun segmentAlignedStart(contextPtr: Long, index: Int): Long
         external fun segmentEnd(contextPtr: Long, index: Int): Long
 
         external fun systemInfo(): String

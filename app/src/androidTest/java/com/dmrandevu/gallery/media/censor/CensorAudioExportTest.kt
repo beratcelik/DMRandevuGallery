@@ -52,11 +52,23 @@ class CensorAudioExportTest {
         Log.i(TAG, "windows: " + windows.joinToString { "${it.startUs / 1000}-${it.endUs / 1000}ms" })
         assertTrue("no censor windows", windows.isNotEmpty())
 
-        // The phrase the spike located; the beep has to cover it.
-        val known = 30_680_000L..31_780_000L
+        // The phrase the spike located, verified by cutting the audio at those times and hearing
+        // exactly it. Containment, not overlap: the first version of this test asked only that
+        // some window touch the phrase, and passed while the beep sat 700 ms early — which is
+        // what the operator heard and the test did not.
+        val knownFrom = 30_680_000L
+        val knownTo = 31_780_000L
+        val covering = windows.filter { it.startUs <= knownFrom && it.endUs >= knownTo }
         assertTrue(
-            "nothing covers the known swearing at 30.7s",
-            windows.any { it.startUs < known.last && it.endUs > known.first }
+            "no window covers ${knownFrom / 1000}-${knownTo / 1000}ms; got " +
+                windows.joinToString { "${it.startUs / 1000}-${it.endUs / 1000}" },
+            covering.isNotEmpty()
+        )
+        // And it must not be covering it by being enormous.
+        assertTrue(
+            "the covering window is too wide: " +
+                covering.joinToString { "${(it.endUs - it.startUs) / 1000}ms" },
+            covering.any { it.endUs - it.startUs < 3_000_000 }
         )
 
         assertTrue("no output", output.exists() && output.length() > 0)

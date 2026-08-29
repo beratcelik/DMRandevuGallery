@@ -23,9 +23,17 @@ static bool abort_callback(void *user_data) {
 
 JNIEXPORT jlong JNICALL
 Java_com_dmrandevu_whisper_WhisperLib_00024Companion_initContext(
-        JNIEnv *env, jobject thiz, jstring model_path) {
+        JNIEnv *env, jobject thiz, jstring model_path, jint aheads_preset) {
     UNUSED(thiz);
     struct whisper_context_params params = whisper_context_default_params();
+    // Cross-attention alignment, which has to be asked for when the model is loaded rather than
+    // per call. Without it whisper's token timestamps fall back on the decoder's own timestamp
+    // tokens, and the first token of each 30-second window inherits the window's start — a word
+    // 680 ms in was reported at 0, which put the beep before the word instead of over it.
+    if (aheads_preset > 0) {
+        params.dtw_token_timestamps = true;
+        params.dtw_aheads_preset = (enum whisper_alignment_heads_preset) aheads_preset;
+    }
     const char *path = (*env)->GetStringUTFChars(env, model_path, NULL);
     struct whisper_context *context = whisper_init_from_file_with_params(path, params);
     (*env)->ReleaseStringUTFChars(env, model_path, path);
@@ -68,13 +76,20 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_setAbort(
 JNIEXPORT jint JNICALL
 Java_com_dmrandevu_whisper_WhisperLib_00024Companion_fullTranscribe(
         JNIEnv *env, jobject thiz, jlong context_ptr, jint num_threads,
-        jfloatArray audio_data, jboolean no_timestamps) {
+        jfloatArray audio_data, jboolean no_timestamps, jint beam_size, jboolean no_context) {
     UNUSED(thiz);
     struct whisper_context *context = (struct whisper_context *) context_ptr;
     jfloat *samples = (*env)->GetFloatArrayElements(env, audio_data, NULL);
     const jsize count = (*env)->GetArrayLength(env, audio_data);
 
-    struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    // Beam search where the command line tool uses it. Greedy decoding produced token
+    // timestamps that collapsed onto the 30-second window boundaries — a word 680 ms into the
+    // window was reported at the window's start, which put the beep before the word.
+    struct whisper_full_params params = whisper_full_default_params(
+            beam_size > 1 ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY);
+    if (beam_size > 1) {
+        params.beam_search.beam_size = beam_size;
+    }
     params.print_realtime = false;
     params.print_progress = false;
     params.print_timestamps = false;
@@ -83,9 +98,7 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_fullTranscribe(
     params.language = "tr";
     params.n_threads = num_threads;
     params.offset_ms = 0;
-    // Each pass stands alone. Carrying context across calls lets a hallucination from one pass
-    // prime the next, and these clips are short enough that there is nothing to gain.
-    params.no_context = true;
+    params.no_context = no_context == JNI_TRUE;
     params.single_segment = false;
     params.no_timestamps = no_timestamps == JNI_TRUE;
     params.max_len = no_timestamps == JNI_TRUE ? 0 : 1;
@@ -139,6 +152,28 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_segmentEnd(
     UNUSED(env);
     UNUSED(thiz);
     return whisper_full_get_segment_t1((struct whisper_context *) context_ptr, index);
+}
+
+/**
+ * Where the alignment actually places the start of a segment, in hundredths of a second.
+ *
+ * Returns -1 when alignment was not computed, so the caller can fall back on the segment's own
+ * timestamp rather than silently beeping the wrong moment.
+ */
+JNIEXPORT jlong JNICALL
+Java_com_dmrandevu_whisper_WhisperLib_00024Companion_segmentAlignedStart(
+        JNIEnv *env, jobject thiz, jlong context_ptr, jint index) {
+    UNUSED(env);
+    UNUSED(thiz);
+    struct whisper_context *context = (struct whisper_context *) context_ptr;
+    const int tokens = whisper_full_n_tokens(context, index);
+    for (int i = 0; i < tokens; i++) {
+        const whisper_token_data token = whisper_full_get_token_data(context, index, i);
+        if (token.t_dtw >= 0) {
+            return token.t_dtw;
+        }
+    }
+    return -1;
 }
 
 JNIEXPORT jstring JNICALL

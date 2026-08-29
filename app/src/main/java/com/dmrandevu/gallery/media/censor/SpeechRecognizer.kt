@@ -144,19 +144,27 @@ class SpeechRecognizer(
         fun flush() {
             val finished = text.toString().trim()
             if (finished.isNotEmpty()) {
-                words.add(TimedWord(finished, startMs * 1_000, endMs * 1_000))
+                // A word cannot end before it starts; alignment occasionally puts two tokens at
+                // the same instant, and a zero-width window would beep nothing at all.
+                val end = maxOf(endMs, startMs + MIN_WORD_MS)
+                words.add(TimedWord(finished, startMs * 1_000, end * 1_000))
             }
             text = StringBuilder()
         }
 
-        for (segment in segments) {
+        for ((index, segment) in segments.withIndex()) {
             if (segment.text.isBlank()) continue
             if (segment.text.startsWith(" ") || text.isEmpty()) {
                 flush()
-                startMs = segment.startMs
+                startMs = segment.bestStartMs
             }
             text.append(segment.text.trim())
-            endMs = segment.endMs
+            // Where the next token was aligned is a better end than this one's own timestamp,
+            // which comes from the decoder rather than from the alignment.
+            val nextAligned = segments.drop(index + 1)
+                .firstOrNull { it.text.isNotBlank() }
+                ?.alignedStartMs
+            endMs = nextAligned ?: segment.endMs
         }
         flush()
         return words
@@ -180,13 +188,23 @@ class SpeechRecognizer(
             throw RecognitionFailedException("${model.fileName} is not on the phone")
         }
         return try {
-            WhisperContext.load(file).also {
+            WhisperContext.load(file, alignmentFor(model)).also {
                 loaded = it
                 loadedFrom = file
             }
         } catch (e: Exception) {
             throw RecognitionFailedException("Could not load ${model.fileName}", e)
         }
+    }
+
+    /**
+     * Alignment reads a fixed set of attention heads, so it has to match the architecture.
+     * Naming the wrong one does not fail — it produces confident nonsense.
+     */
+    private fun alignmentFor(model: CensorModels.Model) = when (model) {
+        CensorModels.Model.WHISPER_BASE -> WhisperContext.Alignment.BASE
+        CensorModels.Model.WHISPER_SMALL -> WhisperContext.Alignment.SMALL
+        else -> WhisperContext.Alignment.NONE
     }
 
     /** Stops whichever pass is running; the coroutine's own cancellation does the rest. */
@@ -209,6 +227,9 @@ class SpeechRecognizer(
 
     private companion object {
         const val TAG = "CensorAsr"
+
+        /** Floor on a word's length, so alignment placing two tokens together still beeps. */
+        const val MIN_WORD_MS = 120L
         val WHITESPACE = Regex("\\s+")
 
         /**
