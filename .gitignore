@@ -20,3 +20,5 @@ DerivedData/
 .claude/
 
 .DS_Store
+ios/Frameworks/
+third_party/whisper.cpp/build-ios-*/

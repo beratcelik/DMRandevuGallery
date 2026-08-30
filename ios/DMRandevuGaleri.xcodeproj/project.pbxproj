@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DA00000000000000000000F2 /* whisper.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA00000000000000000000F1 /* whisper.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		DA0000000000000000000071 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		DA00000000000000000000F1 /* whisper.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = whisper.xcframework; path = Frameworks/whisper.xcframework; sourceTree = "<group>"; };
 		DA0000000000000000000011 /* DMRandevuGaleri.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DMRandevuGaleri.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA0000000000000000000021 /* DMRandevuGaleriTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DMRandevuGaleriTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA0000000000000000000072 /* DMRandevuGaleriUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DMRandevuGaleriUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DA00000000000000000000F2 /* whisper.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +91,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DA00000000000000000000F3 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DA00000000000000000000F1 /* whisper.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		DA0000000000000000000002 = {
 			isa = PBXGroup;
 			children = (
@@ -92,6 +106,7 @@
 				DA0000000000000000000022 /* DMRandevuGaleriTests */,
 				DA0000000000000000000073 /* DMRandevuGaleriUITests */,
 				DA0000000000000000000003 /* Products */,
+				DA00000000000000000000F3 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -394,6 +409,20 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dmrandevu.gallery;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "DMRandevuGaleri/DMRandevuGaleri-Bridging-Header.h";
+				// whisper is a static library and does not pull its own dependencies in.
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Metal,
+					"-framework",
+					Accelerate,
+					"-lc++",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -419,6 +448,20 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dmrandevu.gallery;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Frameworks",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "DMRandevuGaleri/DMRandevuGaleri-Bridging-Header.h";
+				// whisper is a static library and does not pull its own dependencies in.
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Metal,
+					"-framework",
+					Accelerate,
+					"-lc++",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
