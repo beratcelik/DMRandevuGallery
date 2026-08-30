@@ -240,6 +240,31 @@ final class GalleryUITests: XCTestCase {
         XCTFail("the download never finished")
     }
 
+    /// Tapping İndir again while it is already working must do nothing at all.
+    ///
+    /// It used to pause the video. The button was `.disabled` while busy, and a disabled SwiftUI
+    /// button does not swallow the tap — it goes through to the video behind and toggles
+    /// tap-to-pause. A censored export runs for well over a minute, so this was most of the time
+    /// the operator was looking at it.
+    @MainActor
+    func testTappingDownloadWhileItIsWorkingDoesNotPause() throws {
+        XCTAssertFalse(pausedIndicator.exists, "started paused")
+
+        let download = onScreen("actionDownload")
+        download.tap()
+
+        // Once it is busy, tap it again where the finger would land.
+        Thread.sleep(forTimeInterval: 1.5)
+        download.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+
+        XCTAssertFalse(
+            pausedIndicator.exists,
+            "tapping the download button while it was working paused the video"
+        )
+        allowPhotosAccessIfAsked()
+    }
+
     @MainActor
     func testCaptionSheetOpens() throws {
         onScreen("actionCaption").tap()

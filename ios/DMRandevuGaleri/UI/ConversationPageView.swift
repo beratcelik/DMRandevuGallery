@@ -670,7 +670,16 @@ private struct ActionButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        // Deliberately always enabled, with the action refusing instead.
+        //
+        // A disabled SwiftUI button does not swallow the tap — it lets it through to whatever is
+        // behind, which here is the video and its tap-to-pause. So every tap on İndir while an
+        // export was already running paused the video instead of doing nothing, and a censored
+        // export runs for a minute and a half.
+        Button {
+            guard enabled, !busy else { return }
+            action()
+        } label: {
             VStack(spacing: 2) {
                 if busy {
                     ProgressView()
@@ -690,7 +699,9 @@ private struct ActionButton: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-        .disabled(!enabled || busy)
+        // The shape, not the glyph: without it the gaps between icon and label are holes the tap
+        // falls through.
+        .contentShape(.rect)
         .opacity(enabled ? 1 : 0.4)
         .accessibilityIdentifier(identifier)
     }
