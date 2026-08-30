@@ -233,6 +233,38 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         failures.remove(proxyUrl)
     }
 
+    /**
+     * Asks the server for this conversation again, to get media links that still work.
+     *
+     * Instagram hands out short-lived links and the server re-signs them on request, so an
+     * expired video is only expired until someone asks again — but retrying the dead link itself
+     * would fail forever, which is why this is a different action from [clearFailure].
+     *
+     * Returns false when the conversation could not be found or the links came back unchanged;
+     * the caller leaves the expiry message up rather than pretending something happened.
+     */
+    suspend fun refreshLinks(conversation: Conversation): Boolean {
+        val index = items.indexOfFirst { it.key == conversation.key }
+        if (index < 0) return false
+        val fresh = try {
+            // Asked for from this conversation's own position, corrected for deletes the same way
+            // the paging is; a page of five is wide enough to cover it landing a row either side.
+            val offset = (index - committedDeletes).coerceAtLeast(0)
+            repo.loadPage(igId, offset, PAGE_SIZE).items.firstOrNull { it.key == conversation.key }
+        } catch (e: UnauthorizedException) {
+            _events.send(GalleryEvent.SessionLost)
+            return false
+        } catch (e: Exception) {
+            return false
+        }
+        if (fresh == null || fresh.urls.isEmpty() || fresh.urls == conversation.urls) return false
+
+        // The old links are gone, and so is anything remembered about them failing.
+        conversation.urls.forEach { failures.remove(repo.proxyUrl(it)) }
+        items[index] = fresh
+        return true
+    }
+
     fun setBlurFaces(enabled: Boolean) {
         settings.blurFaces = enabled
         _blurFaces.value = enabled

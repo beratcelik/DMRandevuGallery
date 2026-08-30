@@ -20,6 +20,7 @@
     <string name="video_expired">Video süresi doldu</string>
     <string name="video_failed">Video yüklenemedi</string>
     <string name="video_retry">Tekrar dene</string>
+    <string name="video_refresh_failed">Yeni bağlantı alınamadı — video sunucuda da yok olabilir</string>
     <string name="end_of_feed">Son müşteriye ulaşıldı</string>
     <string name="logout">Çıkış</string>
 

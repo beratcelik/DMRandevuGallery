@@ -122,6 +122,8 @@ fun ConversationPage(
     val censorAudio by viewModel.censorAudio.collectAsStateWithLifecycle()
     // Non-null only while the models are coming down, which is a one-off on first use.
     var censorDownload by remember { mutableStateOf<Int?>(null) }
+    // True only while the server is being asked for a fresh link.
+    var refreshing by remember { mutableStateOf(false) }
     // Exports share one cache directory and one progress readout, so they have to run one at a
     // time — a second one starting would wipe the first one's working files out from under it.
     val exporting = downloading || sharingStory || sharingReels
@@ -241,15 +243,31 @@ fun ConversationPage(
 
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when {
-                    failure == PlaybackFailure.LINK_DEAD -> Text(
-                        text = stringResource(R.string.video_expired),
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodyLarge
+                    // The link is dead, so trying it again would fail the same way — but the
+                    // server re-signs these on request, so asking for the conversation again
+                    // gets one that works. That is what this retry does, unlike the transient
+                    // one below.
+                    failure == PlaybackFailure.LINK_DEAD -> PlaybackRetry(
+                        message = stringResource(R.string.video_expired),
+                        busy = refreshing,
+                        onRetry = {
+                            refreshing = true
+                            scope.launch {
+                                val renewed = viewModel.refreshLinks(conversation)
+                                refreshing = false
+                                if (!renewed) {
+                                    Toast.makeText(
+                                        context, R.string.video_refresh_failed, Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
                     )
 
                     // Nothing about this one says the video itself is bad, so it keeps the offer
                     // of another go instead of being written off for the rest of the session.
                     failure == PlaybackFailure.TRANSIENT -> PlaybackRetry(
+                        message = stringResource(R.string.video_failed),
                         onRetry = {
                             viewModel.clearFailure(proxyUrl)
                             playerManager.play(conversation.key, proxyUrl)
@@ -681,18 +699,26 @@ fun ConversationPage(
 
 /** Stands in for a video that fell over for a reason that may well not happen twice. */
 @Composable
-private fun PlaybackRetry(onRetry: () -> Unit) {
+private fun PlaybackRetry(
+    message: String,
+    busy: Boolean = false,
+    onRetry: () -> Unit
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = stringResource(R.string.video_failed),
+            text = message,
             color = Color.White.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodyLarge
         )
-        TextButton(onClick = onRetry) {
-            Text(stringResource(R.string.video_retry), color = Color.White)
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+        } else {
+            TextButton(onClick = onRetry) {
+                Text(stringResource(R.string.video_retry), color = Color.White)
+            }
         }
     }
 }
