@@ -112,7 +112,7 @@ class SpeechRecognizer(
             audio.samples, audio.channelCount, audio.sampleRate, pass.speed
         )
         val segments = context(pass.model).transcribe(samples, noTimestamps = false)
-        return assembleWords(segments)
+        return WordAssembly.fromTokens(segments)
     }
 
     /** A detection pass: words only, no usable times. */
@@ -135,41 +135,6 @@ class SpeechRecognizer(
      * being built. That is how Turkish comes back — "MÜZİK" arrives as M, Ü, Z, İ, K — so without
      * this the lexicon would be matching single letters.
      */
-    private fun assembleWords(segments: List<WhisperContext.Segment>): List<TimedWord> {
-        val words = ArrayList<TimedWord>()
-        var text = StringBuilder()
-        var startMs = 0L
-        var endMs = 0L
-
-        fun flush() {
-            val finished = text.toString().trim()
-            if (finished.isNotEmpty()) {
-                // A word cannot end before it starts; alignment occasionally puts two tokens at
-                // the same instant, and a zero-width window would beep nothing at all.
-                val end = maxOf(endMs, startMs + MIN_WORD_MS)
-                words.add(TimedWord(finished, startMs * 1_000, end * 1_000))
-            }
-            text = StringBuilder()
-        }
-
-        for ((index, segment) in segments.withIndex()) {
-            if (segment.text.isBlank()) continue
-            if (segment.text.startsWith(" ") || text.isEmpty()) {
-                flush()
-                startMs = segment.bestStartMs
-            }
-            text.append(segment.text.trim())
-            // Where the next token was aligned is a better end than this one's own timestamp,
-            // which comes from the decoder rather than from the alignment.
-            val nextAligned = segments.drop(index + 1)
-                .firstOrNull { it.text.isNotBlank() }
-                ?.alignedStartMs
-            endMs = nextAligned ?: segment.endMs
-        }
-        flush()
-        return words
-    }
-
     /**
      * Models are loaded one at a time and the previous one dropped.
      *
@@ -198,14 +163,19 @@ class SpeechRecognizer(
     }
 
     /**
-     * Alignment reads a fixed set of attention heads, so it has to match the architecture.
-     * Naming the wrong one does not fail — it produces confident nonsense.
+     * Alignment is off, and this is the awkward part of the story.
+     *
+     * whisper refuses to run cross-attention alignment alongside flash attention and silently
+     * turns the alignment off rather than the flash. Forcing flash off to get alignment works on
+     * the desktop, but on this phone's CPU backend it collapses the transcription: the same clip
+     * that yields 106 tokens with flash on yields 22 without it, losing most of the speech. A
+     * precise timing for a word the recognizer never heard is worth nothing, so the transcription
+     * wins and [CensorWindows] is built to tolerate the coarser timings instead.
+     *
+     * The plumbing is kept because it is correct and the choice may flip: whisper.cpp 1.9.2
+     * behaves this way on arm64 CPU, and a later one may not.
      */
-    private fun alignmentFor(model: CensorModels.Model) = when (model) {
-        CensorModels.Model.WHISPER_BASE -> WhisperContext.Alignment.BASE
-        CensorModels.Model.WHISPER_SMALL -> WhisperContext.Alignment.SMALL
-        else -> WhisperContext.Alignment.NONE
-    }
+    private fun alignmentFor(model: CensorModels.Model) = WhisperContext.Alignment.NONE
 
     /** Stops whichever pass is running; the coroutine's own cancellation does the rest. */
     fun abort() {
@@ -227,9 +197,6 @@ class SpeechRecognizer(
 
     private companion object {
         const val TAG = "CensorAsr"
-
-        /** Floor on a word's length, so alignment placing two tokens together still beeps. */
-        const val MIN_WORD_MS = 120L
         val WHITESPACE = Regex("\\s+")
 
         /**

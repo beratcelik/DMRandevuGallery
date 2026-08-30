@@ -123,6 +123,11 @@ class WordAlignmentTest {
         val windows = CensorWindows.build(timing, hits, durationUs = 60_000_000)
         assertEquals(1, windows.size)
         assertEquals(43_910_000L, windows[0].startUs)
-        assertEquals(44_630_000L, windows[0].endUs)
+        // Well past the accused word's own end: the timings run early, so the swearing is in the
+        // stretch after where the recognizer says the word stops.
+        assertEquals(
+            44_510_000L + CensorWindows.SHIFT_ALLOWANCE_US + 120_000L,
+            windows[0].endUs
+        )
     }
 }

@@ -27,13 +27,34 @@ object CensorWindows {
         hits: Set<Int>,
         durationUs: Long,
         padUs: Long = PAD_US,
-        mergeGapUs: Long = MERGE_GAP_US
+        mergeGapUs: Long = MERGE_GAP_US,
+        shiftAllowanceUs: Long = SHIFT_ALLOWANCE_US
     ): List<CensorWindow> {
         if (hits.isEmpty()) return emptyList()
         val spans = hits.asSequence()
             .filter { it in words.indices }
-            .map { words[it] }
-            .map { (it.startUs - padUs).coerceAtLeast(0) to (it.endUs + padUs).coerceAtMost(durationUs) }
+            .map { index ->
+                val word = words[index]
+                // Runs well past where the word reportedly ends.
+                //
+                // The recognizer's timings run early on this phone. Measured against the same
+                // clip cut by hand: it places "Amına koydu mu" at 30.00-30.97 s where the words
+                // really are at 30.68-31.78 s, an error of 680 to 810 ms that grows slowly
+                // across the phrase. Ending the beep where the word reportedly ends stops in the
+                // middle of the swearing, which is what the operator heard.
+                //
+                // Bounding this by the *next* word's end was the first attempt and does not
+                // work: that timing is shifted early too, so the bound moves with the error
+                // instead of correcting it. A flat allowance is both simpler and immune to it.
+                //
+                // The window is not moved forward, only stretched. Shifting it would be tighter,
+                // but it would beep late wherever the timings are in fact correct, and a late
+                // beep leaves the swearing audible — the one outcome this filter exists to
+                // prevent. Stretching covers both readings and costs about a second of extra
+                // beep before the word.
+                val end = word.endUs + shiftAllowanceUs
+                (word.startUs - padUs).coerceAtLeast(0) to (end + padUs).coerceAtMost(durationUs)
+            }
             .filter { (start, end) -> end > start }
             .sortedBy { it.first }
             .toList()
@@ -49,6 +70,14 @@ object CensorWindows {
         }
         return merged
     }
+
+    /**
+     * How far past a word's reported end the beep may reach to find the word itself.
+     *
+     * Sized from the measured error — 680 to 810 ms on the operator's own clip — with enough
+     * margin that the end of a phrase, where the drift is largest, is still covered.
+     */
+    const val SHIFT_ALLOWANCE_US = 900_000L
 
     /**
      * How far either side of the word the beep reaches.

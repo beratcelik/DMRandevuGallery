@@ -7,7 +7,7 @@ internal class WhisperLib {
             System.loadLibrary("whisper")
         }
 
-        external fun initContext(modelPath: String, aheadsPreset: Int): Long
+        external fun initContext(modelPath: String, aheadsPreset: Int, flashAttn: Boolean): Long
         external fun freeContext(contextPtr: Long)
         external fun setAbort(abort: Boolean)
 
@@ -33,8 +33,11 @@ internal class WhisperLib {
         /** Hundredths of a second, which is whisper's own unit. */
         external fun segmentStart(contextPtr: Long, index: Int): Long
 
-        /** Where alignment puts the segment, or -1 when it was not computed. */
-        external fun segmentAlignedStart(contextPtr: Long, index: Int): Long
+        external fun tokenCount(contextPtr: Long, segment: Int): Int
+        external fun tokenText(contextPtr: Long, segment: Int, index: Int): String
+
+        /** Where alignment puts a token, or -1 for special tokens and unaligned ones. */
+        external fun tokenAligned(contextPtr: Long, segment: Int, index: Int): Long
         external fun segmentEnd(contextPtr: Long, index: Int): Long
 
         external fun systemInfo(): String

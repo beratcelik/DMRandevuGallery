@@ -17,7 +17,9 @@ class CensorWindowsTest {
         val windows = CensorWindows.build(words, setOf(0), minute)
         assertEquals(1, windows.size)
         assertEquals(880_000L, windows[0].startUs)
-        assertEquals(1_620_000L, windows[0].endUs)
+        // The pad at the front, the pad plus the reach at the back — the recognizer's timings
+        // run early, so the far edge has to allow for it.
+        assertEquals(1_500_000L + CensorWindows.SHIFT_ALLOWANCE_US + 120_000L, windows[0].endUs)
     }
 
     @Test
@@ -27,7 +29,10 @@ class CensorWindowsTest {
         val windows = CensorWindows.build(words, setOf(0, 1), minute)
         assertEquals(1, windows.size)
         assertEquals(30_560_000L, windows[0].startUs)
-        assertEquals(31_900_000L, windows[0].endUs)
+        assertEquals(
+            31_780_000L + CensorWindows.SHIFT_ALLOWANCE_US + 120_000L,
+            windows[0].endUs
+        )
     }
 
     @Test
@@ -43,7 +48,9 @@ class CensorWindowsTest {
         val near = listOf(word("a", 1_000, 1_100), word("b", 1_350, 1_450))
         assertEquals(1, CensorWindows.build(near, setOf(0, 1), minute).size)
 
-        val far = listOf(word("a", 1_000, 1_100), word("b", 1_900, 2_000))
+        // Further apart than it used to need to be: a window now reaches up to 700 ms past the
+        // word's reported end to find the word itself, so two beeps have to clear that too.
+        val far = listOf(word("a", 1_000, 1_100), word("b", 3_000, 3_100))
         assertEquals(2, CensorWindows.build(far, setOf(0, 1), minute).size)
     }
 
@@ -78,7 +85,10 @@ class CensorWindowsTest {
         val windows = CensorWindows.build(words, setOf(0, 1), minute)
         assertEquals(1, windows.size)
         assertEquals(880_000L, windows[0].startUs)
-        assertEquals(1_720_000L, windows[0].endUs)
+        assertEquals(
+            1_600_000L + CensorWindows.SHIFT_ALLOWANCE_US + 120_000L,
+            windows[0].endUs
+        )
     }
 
     @Test
@@ -93,5 +103,39 @@ class CensorWindowsTest {
     fun `zero-length audio produces no window`() {
         val words = listOf(word("siktir", 1_000, 1_200))
         assertTrue(CensorWindows.build(words, setOf(0), durationUs = 0).isEmpty())
+    }
+
+    /**
+     * The window runs well past the word's reported end, because that is where the word is.
+     *
+     * The recognizer runs early on the phone this ships to: it placed a phrase at 30.00-30.97 s
+     * that really sits at 30.68-31.78 s. Ending the beep where the word reportedly ends stops in
+     * the middle of the swearing, which is what the operator heard.
+     */
+    @Test
+    fun `the window reaches past the reported end`() {
+        val words = listOf(word("sikeyim", 1_000, 1_300))
+        val windows = CensorWindows.build(words, setOf(0), minute, padUs = 0)
+
+        assertEquals(1, windows.size)
+        assertEquals(1_300_000L + CensorWindows.SHIFT_ALLOWANCE_US, windows[0].endUs)
+    }
+
+    /**
+     * The reach is a flat allowance, not "up to the next word".
+     *
+     * Bounding it by the next word was the first attempt and did not work: that word's timing is
+     * shifted early by the same error, so the bound moved with the fault instead of correcting
+     * it and the beep still stopped short.
+     */
+    @Test
+    fun `a near next word does not shorten the reach`() {
+        val near = listOf(word("sikeyim", 1_000, 1_300), word("seni", 1_300, 1_450))
+        val far = listOf(word("sikeyim", 1_000, 1_300), word("sonra", 9_000, 9_400))
+
+        assertEquals(
+            CensorWindows.build(near, setOf(0), minute, padUs = 0).first().endUs,
+            CensorWindows.build(far, setOf(0), minute, padUs = 0).first().endUs
+        )
     }
 }

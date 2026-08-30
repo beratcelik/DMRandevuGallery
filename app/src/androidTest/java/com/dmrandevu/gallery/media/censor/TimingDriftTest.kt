@@ -6,6 +6,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.dmrandevu.whisper.WhisperContext
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import kotlin.math.abs
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
@@ -47,57 +49,55 @@ class TimingDriftTest {
         val theirs = FloatArray(shorts.remaining()) { shorts.get(it) / 32768f }
         Log.i(TAG, "reference: ${theirs.size} samples")
 
-        val whisper = WhisperContext.load(models.fileFor(CensorModels.Model.WHISPER_BASE))
-        try {
-            val settings = listOf(
-                Triple("greedy+noctx", 0, true),
-                Triple("greedy+ctx", 0, false),
-                Triple("beam5+ctx", 5, false)
+        // The point of the comparison: the same audio and the same model, with and without
+        // cross-attention alignment.
+        var alignedStart = -1L
+        val cases = listOf(
+            Triple("flash+noalign", WhisperContext.Alignment.NONE, true)
+        )
+        for ((label, alignment, flash) in cases) {
+            val whisper = WhisperContext.load(
+                models.fileFor(CensorModels.Model.WHISPER_BASE), alignment, flash
             )
-            for ((label, beam, noContext) in settings) {
+            try {
                 val startedAt = System.currentTimeMillis()
-                val words = assemble(
-                    whisper.transcribe(
-                        ours, noTimestamps = false, beamSize = beam, noContext = noContext
-                    )
-                )
+                val segments = whisper.transcribe(ours, noTimestamps = false)
+                run {
+                    Log.i(TAG, "  $label segments=${segments.size} tokens=${segments.sumOf { it.tokens.size }}")
+                    segments.flatMap { it.tokens }
+                        .filter { it.text.isNotBlank() }
+                        .take(10)
+                        .forEach { Log.i(TAG, "    tok ${it.text!!.replace(" ", "_")!!} @ ${it.alignedMs}") }
+                }
+                val words = WordAssembly.fromTokens(segments)
                 Log.i(
                     TAG,
                     "$label: ${words.size} words in ${System.currentTimeMillis() - startedAt} ms"
                 )
-                words.filter { it.text.contains("mına", true) || it.text.contains("oydu", true) }
-                    .forEach {
-                        Log.i(TAG, "  $label HIT ${it.text} @ ${it.startUs / 1000}-${it.endUs / 1000}ms")
+                words.forEachIndexed { i, w ->
+                    if (w.startUs in 28_500_000..33_000_000) {
+                        Log.i(TAG, "    [$i] ${w.text} ${w.startUs / 1000}-${w.endUs / 1000}ms")
                     }
-                // Round numbers are the tell: a token reported exactly on a 10-second boundary
-                // has almost certainly inherited a window start rather than been placed.
+                }
+                words.filter { it.text.contains("mına", true) }.forEach {
+                    Log.i(TAG, "  $label HIT ${it.text} @ ${it.startUs / 1000}ms")
+                    if (alignment == WhisperContext.Alignment.BASE) alignedStart = it.startUs / 1000
+                }
+                // Round numbers are the tell: a token reported exactly on a whole second has
+                // almost certainly inherited a window start rather than been placed.
                 val round = words.count { it.startUs % 1_000_000L == 0L }
-                Log.i(TAG, "  $label timestamps landing on a whole second: $round of ${words.size}")
+                Log.i(TAG, "  $label on a whole second: $round of ${words.size}")
+            } finally {
+                whisper.close()
             }
-        } finally {
-            whisper.close()
         }
-    }
 
-    /** Same reassembly the recognizer uses, kept local so this measures only the timings. */
-    private fun assemble(segments: List<WhisperContext.Segment>): List<TimedWord> {
-        val words = ArrayList<TimedWord>()
-        var text = StringBuilder()
-        var startMs = 0L
-        var endMs = 0L
-        fun flush() {
-            val done = text.toString().trim()
-            if (done.isNotEmpty()) words.add(TimedWord(done, startMs * 1_000, endMs * 1_000))
-            text = StringBuilder()
-        }
-        for (s in segments) {
-            if (s.text.isBlank()) continue
-            if (s.text.startsWith(" ") || text.isEmpty()) { flush(); startMs = s.startMs }
-            text.append(s.text.trim())
-            endMs = s.endMs
-        }
-        flush()
-        return words
+        // Where cutting the audio proves the phrase begins.
+        assertTrue("alignment did not place the word at all", alignedStart >= 0)
+        assertTrue(
+            "aligned start was ${alignedStart}ms, expected near 30680ms",
+            abs(alignedStart - 30_680) < 250
+        )
     }
 
     private companion object { const val TAG = "CensorDrift" }

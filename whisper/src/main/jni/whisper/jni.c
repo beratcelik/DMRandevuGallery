@@ -21,10 +21,23 @@ static bool abort_callback(void *user_data) {
     return g_abort;
 }
 
+// Without this whisper's own warnings go to stderr and are never seen on Android. That cost real
+// time: it disables alignment when flash attention is on and says so, and the message went
+// nowhere, so alignment looked like it was running when it had been switched off.
+static void log_callback(enum ggml_log_level level, const char *text, void *user_data) {
+    UNUSED(user_data);
+    int priority = level == GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR
+                 : level == GGML_LOG_LEVEL_WARN  ? ANDROID_LOG_WARN
+                                                 : ANDROID_LOG_INFO;
+    __android_log_print(priority, TAG, "%s", text);
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_dmrandevu_whisper_WhisperLib_00024Companion_initContext(
-        JNIEnv *env, jobject thiz, jstring model_path, jint aheads_preset) {
+        JNIEnv *env, jobject thiz, jstring model_path, jint aheads_preset, jboolean flash_attn) {
     UNUSED(thiz);
+    whisper_log_set(log_callback, NULL);
+
     struct whisper_context_params params = whisper_context_default_params();
     // Cross-attention alignment, which has to be asked for when the model is loaded rather than
     // per call. Without it whisper's token timestamps fall back on the decoder's own timestamp
@@ -33,6 +46,12 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_initContext(
     if (aheads_preset > 0) {
         params.dtw_token_timestamps = true;
         params.dtw_aheads_preset = (enum whisper_alignment_heads_preset) aheads_preset;
+        // Flash attention defaults on and is mutually exclusive with alignment — whisper quietly
+        // turns the alignment off rather than the other way round, so asking for both gets
+        // neither, and the timestamps silently stay wrong.
+        params.flash_attn = false;
+    } else {
+        params.flash_attn = flash_attn == JNI_TRUE;
     }
     const char *path = (*env)->GetStringUTFChars(env, model_path, NULL);
     struct whisper_context *context = whisper_init_from_file_with_params(path, params);
@@ -154,26 +173,39 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_segmentEnd(
     return whisper_full_get_segment_t1((struct whisper_context *) context_ptr, index);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_dmrandevu_whisper_WhisperLib_00024Companion_tokenCount(
+        JNIEnv *env, jobject thiz, jlong context_ptr, jint segment) {
+    UNUSED(env);
+    UNUSED(thiz);
+    return whisper_full_n_tokens((struct whisper_context *) context_ptr, segment);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_dmrandevu_whisper_WhisperLib_00024Companion_tokenText(
+        JNIEnv *env, jobject thiz, jlong context_ptr, jint segment, jint index) {
+    UNUSED(thiz);
+    struct whisper_context *context = (struct whisper_context *) context_ptr;
+    return (*env)->NewStringUTF(env, whisper_full_get_token_text(context, segment, index));
+}
+
 /**
- * Where the alignment actually places the start of a segment, in hundredths of a second.
+ * Where alignment places this token, in hundredths of a second from the start of the audio.
  *
- * Returns -1 when alignment was not computed, so the caller can fall back on the segment's own
- * timestamp rather than silently beeping the wrong moment.
+ * Returns -1 for a token alignment did not place, and for the special tokens that carry no audio
+ * of their own — the caller must not treat those as a moment in the recording.
  */
 JNIEXPORT jlong JNICALL
-Java_com_dmrandevu_whisper_WhisperLib_00024Companion_segmentAlignedStart(
-        JNIEnv *env, jobject thiz, jlong context_ptr, jint index) {
+Java_com_dmrandevu_whisper_WhisperLib_00024Companion_tokenAligned(
+        JNIEnv *env, jobject thiz, jlong context_ptr, jint segment, jint index) {
     UNUSED(env);
     UNUSED(thiz);
     struct whisper_context *context = (struct whisper_context *) context_ptr;
-    const int tokens = whisper_full_n_tokens(context, index);
-    for (int i = 0; i < tokens; i++) {
-        const whisper_token_data token = whisper_full_get_token_data(context, index, i);
-        if (token.t_dtw >= 0) {
-            return token.t_dtw;
-        }
+    const whisper_token_data token = whisper_full_get_token_data(context, segment, index);
+    if (token.id >= whisper_token_eot(context)) {
+        return -1;
     }
-    return -1;
+    return token.t_dtw;
 }
 
 JNIEXPORT jstring JNICALL

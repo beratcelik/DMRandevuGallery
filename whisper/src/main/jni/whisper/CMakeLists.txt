@@ -33,11 +33,11 @@ add_library(whisper SHARED
 target_compile_definitions(whisper PUBLIC GGML_USE_CPU)
 target_compile_definitions(whisper PRIVATE WHISPER_VERSION="${WHISPER_VERSION}")
 
-# Every phone this app supports is arm64 with half-precision, which the ABI filter already
-# guarantees. The upstream example builds three variants and picks at runtime; there is only
-# one to pick from here.
-target_compile_options(whisper PRIVATE -march=armv8.2-a+fp16)
-set(GGML_COMPILE_OPTIONS -march=armv8.2-a+fp16)
+# Deliberately no -march=armv8.2-a+fp16. The upstream example offers it as one of three variants
+# chosen at runtime; forcing it here gave a transcription that collapsed to a fifth of the words
+# and word timings that disagreed with the same model on the desktop. ggml picks its own kernels
+# from the CPU it finds at runtime, which is the behaviour worth having.
+set(GGML_COMPILE_OPTIONS "")
 
 # Unconditional: the Gradle side forces a Release configuration, but if that is ever lost this
 # still must not fall back to an unoptimised build — at -O0 a single recognition pass took ten
