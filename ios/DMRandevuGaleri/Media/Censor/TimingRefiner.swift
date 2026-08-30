@@ -25,6 +25,17 @@ struct TimingRefiner {
 
     private static let log = Logger(subsystem: "com.dmrandevu.gallery", category: "censor")
 
+    /// Logged and, in a debug build, printed too.
+    ///
+    /// The device console is not reachable from a test run, and these lines are the only way to
+    /// tell a refinement that was rejected from one that never ran.
+    private static func trace(_ message: String) {
+        log.info("\(message, privacy: .public)")
+        #if DEBUG
+        print("[censor] \(message)")
+        #endif
+    }
+
     /// Re-times each run of consecutive hit words. Returns nil for a run the second pass could not
     /// confirm — the caller keeps the rough timing and the wide window that goes with it.
     func refine(
@@ -65,10 +76,18 @@ struct TimingRefiner {
 
         let snippet = try cut(audio, fromUs: from, toUs: to)
         let heard = WordAssembly.words(from: try await transcribe(snippet))
+        Self.trace(
+            "snippet \(from / 1000)-\(to / 1000)ms (rough \(roughStartUs / 1000)-"
+                + "\(roughEndUs / 1000)): "
+                + heard.map { "\($0.text)@\((from + $0.startUs) / 1000)" }.joined(separator: " ")
+        )
         guard !heard.isEmpty else { return nil }
 
         let found = lexicon.hits(heard.map(\.text), tiers: tiers)
-        guard !found.isEmpty else { return nil }
+        guard !found.isEmpty else {
+            Self.trace("the second pass heard no swearing in the snippet")
+            return nil
+        }
 
         let start = found.map { heard[$0].startUs }.min()!
         // Carried to the end of the word after the last one flagged. The second pass splits words
@@ -90,13 +109,15 @@ struct TimingRefiner {
         let atEnd = end >= span - Self.saturationMarginUs
         let tooLong = (end - start) > rough * Int64(Self.implausibleFactor) + Self.implausibleSlackUs
         if atStart || atEnd || tooLong {
-            Self.log.info(
-                "second pass placed the words at \(start / 1000)-\(end / 1000)ms of a \(span / 1000)ms snippet; not usable"
+            Self.trace(
+                "second pass placed the words at \(start / 1000)-\(end / 1000)ms of a "
+                    + "\(span / 1000)ms snippet (atStart \(atStart), atEnd \(atEnd), "
+                    + "tooLong \(tooLong)); not usable"
             )
             return nil
         }
 
-        Self.log.info("refined to \((from + start) / 1000)-\((from + end) / 1000)ms")
+        Self.trace("refined to \((from + start) / 1000)-\((from + end) / 1000)ms")
         return Refined(startUs: from + start, endUs: from + end)
     }
 

@@ -35,20 +35,14 @@ struct AudioTrackDecoder {
             return nil
         }
 
-        let format = try await track.load(.formatDescriptions).first
-        let basic = format.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
-        let sampleRate = Int(basic?.mSampleRate ?? 44_100)
-        let channelCount = Int(basic?.mChannelsPerFrame ?? 2)
-        guard sampleRate > 0, channelCount > 0 else {
-            throw UnsupportedAudioError(
-                message: "Audio track declared \(channelCount) channels at \(sampleRate) Hz"
-            )
-        }
-
         let reader = try AVAssetReader(asset: asset)
-        // Interleaved signed 16-bit, at the track's own rate and channel count. Everything
-        // downstream indexes 16-bit frames, and a float or resampled decode read as this would be
-        // noise — it would beep confidently in the wrong places.
+        // Interleaved signed 16-bit, and deliberately nothing about rate or channels.
+        //
+        // Naming them meant naming what the *compressed* format description reports, and for AAC
+        // with spectral band replication that is the core rate — half the real one. Asking for it
+        // made the reader resample a 44.1 kHz track down to 22.05, throwing away the top octave
+        // before the separation model, which works at 44.1, ever saw it. Left unsaid, the decoder
+        // hands back the track's own rate and the format below reads what actually arrived.
         let output = AVAssetReaderTrackOutput(
             track: track,
             outputSettings: [
@@ -56,9 +50,7 @@ struct AudioTrackDecoder {
                 AVLinearPCMBitDepthKey: 16,
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsNonInterleaved: false,
-                AVSampleRateKey: sampleRate,
-                AVNumberOfChannelsKey: channelCount
+                AVLinearPCMIsNonInterleaved: false
             ]
         )
         guard reader.canAdd(output) else {
@@ -73,10 +65,19 @@ struct AudioTrackDecoder {
 
         let durationUs = try await asset.load(.duration).microseconds ?? 0
         var samples: [Int16] = []
-        samples.reserveCapacity(sampleRate * channelCount * 30)
+        var sampleRate = 0
+        var channelCount = 0
 
         while let buffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
+            // Read from the buffers themselves, once, rather than from the compressed track.
+            if sampleRate == 0,
+               let described = CMSampleBufferGetFormatDescription(buffer),
+               let basic = CMAudioFormatDescriptionGetStreamBasicDescription(described)?.pointee {
+                sampleRate = Int(basic.mSampleRate)
+                channelCount = Int(basic.mChannelsPerFrame)
+                samples.reserveCapacity(sampleRate * max(1, channelCount) * 30)
+            }
             if let block = CMSampleBufferGetDataBuffer(buffer) {
                 let length = CMBlockBufferGetDataLength(block)
                 var bytes = [UInt8](repeating: 0, count: length)
@@ -94,6 +95,11 @@ struct AudioTrackDecoder {
             CMSampleBufferInvalidate(buffer)
         }
 
+        guard sampleRate > 0, channelCount > 0 else {
+            throw UnsupportedAudioError(
+                message: "The decoder never said what rate or how many channels it was producing"
+            )
+        }
         if reader.status == .failed {
             throw UnsupportedAudioError(
                 message: reader.error?.localizedDescription ?? "Audio decode failed"
