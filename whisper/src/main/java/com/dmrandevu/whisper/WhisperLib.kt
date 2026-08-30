@@ -24,7 +24,8 @@ internal class WhisperLib {
             audioData: FloatArray,
             noTimestamps: Boolean,
             beamSize: Int,
-            noContext: Boolean
+            noContext: Boolean,
+            maxLen: Int
         ): Int
 
         external fun segmentCount(contextPtr: Long): Int

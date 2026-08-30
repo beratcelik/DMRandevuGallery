@@ -74,28 +74,19 @@ class AudioCensor(
 
         if (found.hits.isEmpty()) return CensorPlan.nothing()
 
-        // The recognizer's timings run ahead of the audio; how far is measured per clip rather
-        // than assumed, because assuming the worst means a second of beep before every word.
-        val calibration = TimingCalibration.estimate(audio, found.words)
-        val words = if (calibration.shiftUs == 0L) {
-            found.words
+        // A second look at a few seconds around each hit places it to within a frame or two, so
+        // the beep can be tight. Where that could not be confirmed the rough timing stands, and
+        // with it a window wide enough to cover being a second out.
+        val allowance = if (found.refined) {
+            CensorWindows.RESIDUAL_ALLOWANCE_US
         } else {
-            found.words.map {
-                it.copy(
-                    startUs = it.startUs + calibration.shiftUs,
-                    endUs = it.endUs + calibration.shiftUs
-                )
-            }
+            CensorWindows.SHIFT_ALLOWANCE_US
         }
         val windows = CensorWindows.build(
-            words,
+            found.words,
             found.hits,
             audio.durationUs,
-            shiftAllowanceUs = if (calibration.confident) {
-                CensorWindows.RESIDUAL_ALLOWANCE_US
-            } else {
-                CensorWindows.SHIFT_ALLOWANCE_US
-            }
+            shiftAllowanceUs = allowance
         )
         if (windows.isEmpty()) return CensorPlan.nothing()
 

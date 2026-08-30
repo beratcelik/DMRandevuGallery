@@ -95,7 +95,7 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_setAbort(
 JNIEXPORT jint JNICALL
 Java_com_dmrandevu_whisper_WhisperLib_00024Companion_fullTranscribe(
         JNIEnv *env, jobject thiz, jlong context_ptr, jint num_threads,
-        jfloatArray audio_data, jboolean no_timestamps, jint beam_size, jboolean no_context) {
+        jfloatArray audio_data, jboolean no_timestamps, jint beam_size, jboolean no_context, jint max_len) {
     UNUSED(thiz);
     struct whisper_context *context = (struct whisper_context *) context_ptr;
     jfloat *samples = (*env)->GetFloatArrayElements(env, audio_data, NULL);
@@ -120,7 +120,9 @@ Java_com_dmrandevu_whisper_WhisperLib_00024Companion_fullTranscribe(
     params.no_context = no_context == JNI_TRUE;
     params.single_segment = false;
     params.no_timestamps = no_timestamps == JNI_TRUE;
-    params.max_len = no_timestamps == JNI_TRUE ? 0 : 1;
+    // max_len 1 splits a segment per token, which is where word timings come from. Zero leaves
+    // whisper's own phrase segments, whose timestamps hold up where the per-token ones collapse.
+    params.max_len = max_len;
     params.token_timestamps = no_timestamps != JNI_TRUE;
     params.abort_callback = abort_callback;
     params.abort_callback_user_data = NULL;

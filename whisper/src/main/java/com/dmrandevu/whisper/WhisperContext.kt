@@ -66,12 +66,16 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
         noTimestamps: Boolean,
         threads: Int = defaultThreads(),
         beamSize: Int = DEFAULT_BEAM_SIZE,
-        noContext: Boolean = false
+        noContext: Boolean = false,
+        /** 1 splits a segment per token; 0 keeps whisper's own phrase segments. */
+        maxLen: Int = if (noTimestamps) 0 else 1
     ): List<Segment> = withContext(worker) {
         currentCoroutineContext().ensureActive()
         check(contextPtr != 0L) { "Model already closed" }
 
-        val result = WhisperLib.fullTranscribe(contextPtr, threads, samples, noTimestamps, beamSize, noContext)
+        val result = WhisperLib.fullTranscribe(
+            contextPtr, threads, samples, noTimestamps, beamSize, noContext, maxLen
+        )
         when (result) {
             0 -> Unit
             ABORTED -> {

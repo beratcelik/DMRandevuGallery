@@ -64,14 +64,15 @@ class CensorAudioExportTest {
                 windows.joinToString { "${it.startUs / 1000}-${it.endUs / 1000}" },
             covering.isNotEmpty()
         )
-        // And it must not be covering it by being enormous. The phrase is 1.1 s and this allows
-        // 2.0 s, which is not a comfortable margin — it is the current honest limit.
+        // And not by being enormous. The phrase is 1.1 s; this allows the defensive window that
+        // is used when the second recognition pass cannot place the words.
         //
-        // On this clip the recognizer's timings cannot be calibrated (its words are reported
-        // back to back, covering 80% of the audio, so there are no gaps to align against) and
-        // the residual uncertainty is close to a second. A window narrower than this would stop
-        // before the end of the swearing on the very clip it was measured against. Tightening it
-        // needs a better timing source, not a smaller number here.
+        // It is deliberately the loose bound rather than the tight one. Whether the tight window
+        // is reached depends on the phone: on a Galaxy S22+ the second pass placed this word to
+        // within 40 ms, while on a Redmi Note 10 Pro its timestamps pile onto one edge of the
+        // snippet and are rejected, non-deterministically — the same snippet succeeded and then
+        // failed minutes apart. Asserting the tight bound here would make this test a report on
+        // which handset it ran on rather than on whether the swearing is covered.
         assertTrue(
             "the covering window is too wide: " +
                 covering.joinToString { "${(it.endUs - it.startUs) / 1000}ms" },

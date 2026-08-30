@@ -31,8 +31,17 @@ class SpeechRecognizer(
     class RecognitionFailedException(message: String, cause: Throwable? = null) :
         Exception(message, cause)
 
-    /** What the timing pass heard, and which of those words have to be beeped. */
-    data class Result(val words: List<TimedWord>, val hits: Set<Int>)
+    /**
+     * What the timing pass heard, and which of those words have to be beeped.
+     *
+     * [refined] says a second pass confirmed where the swearing is, so the caller can beep a
+     * tight window instead of a defensive one.
+     */
+    data class Result(
+        val words: List<TimedWord>,
+        val hits: Set<Int>,
+        val refined: Boolean = false
+    )
 
     private var loaded: WhisperContext? = null
     private var loadedFrom: File? = null
@@ -100,7 +109,37 @@ class SpeechRecognizer(
             )
             onProgress(step())
         }
-        return Result(words, hits)
+        if (hits.isEmpty()) return Result(words, hits)
+
+        // The words are right but the times are not; a short second look fixes that. Done here,
+        // while the model this needs is still the one that is loaded.
+        val refiner = TimingRefiner(lexicon) { samples ->
+            context(timingPass.model).transcribe(samples, noTimestamps = false)
+        }
+        val refinements = refiner.refine(audio, words, hits, tiers)
+        val retimed = words.toMutableList()
+        var everyRunRefined = refinements.isNotEmpty()
+        for ((run, refined) in refinements) {
+            if (refined == null) {
+                everyRunRefined = false
+                continue
+            }
+            retimed[run.first] = retimed[run.first].copy(startUs = refined.startUs)
+            retimed[run.last] = retimed[run.last].copy(endUs = refined.endUs)
+            // The middle of a run is swallowed by the ends once the windows merge, so it only
+            // has to stay inside them.
+            for (index in run) {
+                val word = retimed[index]
+                retimed[index] = word.copy(
+                    startUs = word.startUs.coerceIn(refined.startUs, refined.endUs),
+                    endUs = word.endUs.coerceIn(refined.startUs, refined.endUs)
+                )
+            }
+            retimed[run.first] = retimed[run.first].copy(startUs = refined.startUs)
+            retimed[run.last] = retimed[run.last].copy(endUs = refined.endUs)
+        }
+        Log.i(TAG, "refined ${refinements.count { it.value != null }} of ${refinements.size} runs")
+        return Result(retimed, hits, refined = everyRunRefined)
     }
 
     /** The pass that owns the clock: a segment per token, reassembled into words. */
