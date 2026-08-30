@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -94,6 +95,12 @@ fun CaptionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Scrolls, and stays clear of the keyboard. Typing a long explanation used to
+                // grow the sheet until the two buttons below were under the keyboard with no way
+                // to reach them — the caption could be regenerated or shared only by deleting
+                // what had just been typed.
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp)
         ) {
@@ -121,13 +128,13 @@ fun CaptionSheet(
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
 
-                else -> Box(
-                    Modifier
-                        .heightIn(max = 260.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(text = caption.orEmpty(), style = MaterialTheme.typography.bodyMedium)
-                }
+                // No scroll of its own any more: the sheet itself scrolls, and a scrollable box
+                // inside a scrollable column fights it for the drag. Capping the height instead
+                // would clip a long caption with no way to read the rest.
+                else -> Text(
+                    text = caption.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
 
             OutlinedTextField(
@@ -135,6 +142,9 @@ fun CaptionSheet(
                 onValueChange = { explanation = it },
                 label = { Text(stringResource(R.string.caption_explanation_hint)) },
                 minLines = 2,
+                // Capped, so a long explanation scrolls inside the box instead of pushing
+                // everything below it off the screen.
+                maxLines = 4,
                 enabled = !generating,
                 modifier = Modifier
                     .fillMaxWidth()
