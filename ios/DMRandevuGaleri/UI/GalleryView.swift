@@ -109,8 +109,11 @@ struct GalleryView: View {
     private func makePlayerManager() -> PlayerManager {
         let manager = PlayerManager(
             cookies: { ServiceLocator.repository.sessionCookies() },
-            onError: { url, unauthorized in
-                if unauthorized { model.reportSessionLost() } else { model.markExpired(url) }
+            onError: { url, failure in
+                switch failure {
+                case .sessionLost: model.reportSessionLost()
+                case .linkDead, .transient: model.report(failure, for: url)
+                }
             }
         )
         manager.setWatermark(model.watermarkHandle())

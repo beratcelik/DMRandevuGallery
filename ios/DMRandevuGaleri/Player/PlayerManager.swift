@@ -1,4 +1,30 @@
 import AVFoundation
+
+/// Why a video would not play, which decides what the operator is offered.
+enum PlaybackFailure {
+    /// The session is over; the app drops back to the login screen.
+    case sessionLost
+
+    /// The CDN turned the link itself down. Retrying the same link is pointless, but the server
+    /// re-signs these on request, so asking it again gets one that works.
+    case linkDead
+
+    /// Says nothing about the video — a 5xx, a dropped connection, a decoder giving up. Worth
+    /// another go at the very same link.
+    case transient
+
+    /// A 401 is the session dying. Any other 4xx is the CDN turning the link down, which is the
+    /// genuinely expired case. Everything else stays retryable rather than being written off for
+    /// the rest of the session — including no status at all, which is what a dropped connection
+    /// leaves behind.
+    init(status: Int?) {
+        switch status {
+        case 401: self = .sessionLost
+        case .some(let code) where (400..<500).contains(code): self = .linkDead
+        default: self = .transient
+        }
+    }
+}
 import Foundation
 
 /// Two players, so the conversation on screen keeps playing while the next one pre-buffers and a
@@ -17,7 +43,7 @@ final class PlayerManager {
     private let cookies: () -> [HTTPCookie]
 
     /// Reports a failed video by its (proxy) url, with true when the session itself is dead.
-    private let onError: (_ url: String, _ unauthorized: Bool) -> Void
+    private let onError: (_ url: String, _ failure: PlaybackFailure) -> Void
 
     private var slotKeys = [String?](repeating: nil, count: poolSize)
     private var slotURLs = [String?](repeating: nil, count: poolSize)
@@ -40,7 +66,7 @@ final class PlayerManager {
 
     init(
         cookies: @escaping () -> [HTTPCookie],
-        onError: @escaping (_ url: String, _ unauthorized: Bool) -> Void
+        onError: @escaping (_ url: String, _ failure: PlaybackFailure) -> Void
     ) {
         self.cookies = cookies
         self.onError = onError
@@ -178,7 +204,8 @@ final class PlayerManager {
             // place AVFoundation writes it down, and it is what separates a dead session from a
             // CDN link that has simply expired.
             let status = item.errorLog()?.events.last?.errorStatusCode
-            Task { @MainActor in self?.onError(url, status == 401) }
+            let failure = PlaybackFailure(status: status)
+            Task { @MainActor in self?.onError(url, failure) }
         }
     }
 

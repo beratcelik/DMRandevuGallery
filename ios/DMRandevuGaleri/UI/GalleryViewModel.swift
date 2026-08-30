@@ -7,8 +7,13 @@ final class GalleryViewModel {
 
     private(set) var items: [Conversation] = []
 
-    /// Proxy urls that failed to play — the CDN link behind them has expired.
-    private(set) var expiredURLs: Set<String> = []
+    /// Proxy urls that failed to play, and what kind of failure each one hit.
+    ///
+    /// The distinction matters: a dead link is worth asking the server to re-sign, while a
+    /// dropped connection is worth simply trying again. Treating every failure as an expiry —
+    /// which this did until the Android build was measured and this one was not — writes off
+    /// perfectly good videos for the rest of the session.
+    private(set) var failures: [String: PlaybackFailure] = [:]
 
     private(set) var loading = true
     private(set) var hasMore = true
@@ -182,8 +187,50 @@ final class GalleryViewModel {
 
     // MARK: - Toggles
 
-    func markExpired(_ proxyURL: String) {
-        expiredURLs.insert(proxyURL)
+    func report(_ failure: PlaybackFailure, for proxyURL: String) {
+        failures[proxyURL] = failure
+    }
+
+    /// Forgets a failure so the page can put the player back and give the video another go.
+    func clearFailure(_ proxyURL: String) {
+        failures.removeValue(forKey: proxyURL)
+    }
+
+    /// Asks the server for this conversation again, to get media links that still work.
+    ///
+    /// Instagram hands out short-lived links and the server re-signs them on request, so an
+    /// expired video is only expired until someone asks again — but retrying the dead link itself
+    /// would fail forever, which is why this is a different action from ``clearFailure(_:)``.
+    ///
+    /// Returns false when the conversation could not be found or the links came back unchanged;
+    /// the caller leaves the expiry message up rather than pretending something happened.
+    func refreshLinks(for conversation: Conversation) async -> Bool {
+        guard let index = items.firstIndex(where: { $0.key == conversation.key }) else {
+            return false
+        }
+        let fresh: Conversation?
+        do {
+            // Asked for from this conversation's own position, corrected for deletes the same way
+            // the paging is; a page of five is wide enough to cover it landing a row either side.
+            let offset = max(index - committedDeletes, 0)
+            let page = try await repository.loadPage(
+                igId: igId, offset: offset, limit: Self.pageSize
+            )
+            fresh = page.items.first { $0.key == conversation.key }
+        } catch is UnauthorizedError {
+            sessionLost = true
+            return false
+        } catch {
+            return false
+        }
+        guard let fresh, !fresh.urls.isEmpty, fresh.urls != conversation.urls else { return false }
+
+        // The old links are gone, and so is anything remembered about them failing.
+        for url in conversation.urls {
+            failures.removeValue(forKey: repository.proxyURL(url)?.absoluteString ?? url)
+        }
+        items[index] = fresh
+        return true
     }
 
     func setBlurFaces(_ enabled: Bool) {

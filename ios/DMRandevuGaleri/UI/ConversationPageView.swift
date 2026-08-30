@@ -32,6 +32,8 @@ struct ConversationPageView: View {
     @State private var holding = false
     /// Non-nil only while the models are coming down, which is a one-off on first use.
     @State private var censorDownload: Int?
+    /// True only while the server is being asked for a fresh link.
+    @State private var refreshing = false
 
     /// Counts out the press before fast playback starts, and is cancelled if the finger lifts or
     /// wanders first.
@@ -174,13 +176,38 @@ struct ConversationPageView: View {
                     let proxyURL = repository.proxyURL(rawURL)?.absoluteString ?? rawURL
                     ZStack {
                         Color.black
-                        if model.expiredURLs.contains(proxyURL) {
-                            Text(Strings.videoExpired)
-                                .foregroundStyle(.white.opacity(0.7))
-                        } else if isActivePage && currentIndex == index {
-                            PlayerLayerView(player: playerManager.player(for: conversation.key))
-                        } else {
-                            ProgressView().tint(.white.opacity(0.35))
+                        switch model.failures[proxyURL] {
+                        case .linkDead:
+                            // The link is dead, so trying it again would fail the same way — but
+                            // the server re-signs these on request, so asking for the
+                            // conversation again gets one that works. That is what this retry
+                            // does, unlike the transient one below.
+                            PlaybackRetry(message: Strings.videoExpired, busy: refreshing) {
+                                refreshing = true
+                                Task {
+                                    let renewed = await model.refreshLinks(for: conversation)
+                                    refreshing = false
+                                    if !renewed { model.toast = Strings.videoRefreshFailed }
+                                }
+                            }
+
+                        case .transient, .sessionLost:
+                            // Nothing about this one says the video itself is bad, so it keeps
+                            // the offer of another go instead of being written off for the rest
+                            // of the session.
+                            PlaybackRetry(message: Strings.videoFailed) {
+                                model.clearFailure(proxyURL)
+                                playerManager.play(key: conversation.key, url: proxyURL)
+                            }
+
+                        case .none:
+                            if isActivePage && currentIndex == index {
+                                PlayerLayerView(
+                                    player: playerManager.player(for: conversation.key)
+                                )
+                            } else {
+                                ProgressView().tint(.white.opacity(0.35))
+                            }
                         }
                     }
                     .containerRelativeFrame([.horizontal, .vertical])
@@ -704,5 +731,28 @@ private struct ActionButton: View {
         .contentShape(.rect)
         .opacity(enabled ? 1 : 0.4)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+/// What a video that would not play offers instead.
+private struct PlaybackRetry: View {
+
+    let message: String
+    var busy = false
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(message)
+                .foregroundStyle(.white.opacity(0.7))
+            if busy {
+                ProgressView().tint(.white)
+            } else {
+                Button(action: onRetry) {
+                    Text(Strings.videoRetry).foregroundStyle(.white)
+                }
+                .accessibilityIdentifier("videoRetry")
+            }
+        }
     }
 }

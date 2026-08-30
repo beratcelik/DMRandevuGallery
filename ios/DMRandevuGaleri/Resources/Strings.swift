@@ -25,6 +25,10 @@ enum Strings {
 
     static let emptyGallery = "Videolu konuşma bulunamadı"
     static let videoExpired = "Video süresi doldu"
+    static let videoFailed = "Video yüklenemedi"
+    static let videoRetry = "Tekrar dene"
+    static let videoRefreshFailed =
+        "Yeni bağlantı alınamadı — video sunucuda da yok olabilir"
 
     // MARK: - Actions
 
