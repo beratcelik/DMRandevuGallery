@@ -64,19 +64,18 @@ class CensorAudioExportTest {
                 windows.joinToString { "${it.startUs / 1000}-${it.endUs / 1000}" },
             covering.isNotEmpty()
         )
-        // And not by being enormous. The phrase is 1.1 s; this allows the defensive window that
-        // is used when the second recognition pass cannot place the words.
+        // And not by being enormous. The phrase is 1.1 s and the beep should be about 1.35 s:
+        // measured, not padded out to be safe. Beeping two seconds to be sure of covering it was
+        // the earlier behaviour and the operator rejected it, so this is what holds the second
+        // recognition pass to its purpose.
         //
-        // It is deliberately the loose bound rather than the tight one. Whether the tight window
-        // is reached depends on the phone: on a Galaxy S22+ the second pass placed this word to
-        // within 40 ms, while on a Redmi Note 10 Pro its timestamps pile onto one edge of the
-        // snippet and are rejected, non-deterministically — the same snippet succeeded and then
-        // failed minutes apart. Asserting the tight bound here would make this test a report on
-        // which handset it ran on rather than on whether the swearing is covered.
+        // If this starts failing at around 1.95 s, the second pass has stopped placing the words
+        // and the defensive window has taken over — the swearing is still covered, but the cause
+        // is worth finding rather than accommodating here.
         assertTrue(
             "the covering window is too wide: " +
                 covering.joinToString { "${(it.endUs - it.startUs) / 1000}ms" },
-            covering.any { it.endUs - it.startUs < 2_000_000 }
+            covering.any { it.endUs - it.startUs < 1_600_000 }
         )
 
         assertTrue("no output", output.exists() && output.length() > 0)

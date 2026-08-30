@@ -66,7 +66,15 @@ class WhisperContext private constructor(private var contextPtr: Long) : Closeab
         noTimestamps: Boolean,
         threads: Int = defaultThreads(),
         beamSize: Int = DEFAULT_BEAM_SIZE,
-        noContext: Boolean = false,
+        /**
+         * Each call stands alone by default, and must.
+         *
+         * whisper otherwise primes a call with the text of the one before it, and this context
+         * is reused across passes over the same clip. A short snippet decoded after three full
+         * passes came back with a different transcription and timestamps piled onto one edge,
+         * which looked like the hardware being unreliable and was this.
+         */
+        noContext: Boolean = true,
         /** 1 splits a segment per token; 0 keeps whisper's own phrase segments. */
         maxLen: Int = if (noTimestamps) 0 else 1
     ): List<Segment> = withContext(worker) {

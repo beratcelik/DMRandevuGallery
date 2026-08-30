@@ -90,7 +90,17 @@ class TimingRefiner(
         // pile onto the first or last instant of it, and a "refinement" that returns the whole
         // snippet is worse than the rough timing it replaced, because it would beep six seconds.
         val start = found.minOf { heard[it].startUs }
-        val end = found.maxOf { heard[it].endUs }
+        // Carried to the end of the word after the last one flagged. The second pass splits
+        // words where the lexicon does not: "koydum" comes back as "koydu" and "mu?", and only
+        // the first half is profane, so stopping at it stops halfway through the swearing.
+        val lastHit = found.max()
+        val next = heard.getOrNull(lastHit + 1)
+        val spoken = heard[lastHit].endUs
+        val end = if (next != null) {
+            minOf(next.endUs, spoken + TAIL_REACH_US)
+        } else {
+            spoken
+        }
         val span = to - from
 
         val atStart = start <= SATURATION_MARGIN_US
@@ -173,6 +183,14 @@ class TimingRefiner(
          * six words in a row came back at exactly the snippet's end.
          */
         const val MIN_SNIPPET_US = 6_000_000L
+
+        /**
+         * How far past the last flagged word the beep may run to catch the rest of it.
+         *
+         * Small, because this is applied to a timing that has already been measured properly —
+         * unlike the defensive allowance used when the second pass cannot place anything.
+         */
+        private const val TAIL_REACH_US = 700_000L
 
         /** A word this close to either edge of the snippet is stuck there, not placed there. */
         private const val SATURATION_MARGIN_US = 150_000L

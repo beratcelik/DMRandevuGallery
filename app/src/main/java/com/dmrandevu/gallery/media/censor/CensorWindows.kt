@@ -85,7 +85,7 @@ object CensorWindows {
      * the measurement itself, which is a frame or two either way, plus a little for the word
      * boundary.
      */
-    const val RESIDUAL_ALLOWANCE_US = 200_000L
+    const val RESIDUAL_ALLOWANCE_US = 350_000L
 
     /**
      * How far either side of the word the beep reaches.

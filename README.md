@@ -58,6 +58,10 @@ playing underneath. Off by default; the toggle is the speaker icon in the page h
 
 How it works, and why it is built this way:
 
+- **Every pass stands alone.** whisper primes a call with the text of the one before it, and the
+  same context is reused across passes over one clip. A short snippet decoded after three full
+  passes came back with different words and its timestamps piled onto one edge of the audio —
+  which looked like the phone's CPU being unreliable, and was `no_context` being off.
 - **Recognition takes several passes.** whisper will not give good words and good times at once.
   With `no_timestamps` it transcribes swearing faithfully but reports one thirty-second block;
   with `max_len=1` it gives a word at a time but quietly substitutes an innocent near-homophone —
@@ -68,6 +72,13 @@ How it works, and why it is built this way:
   one case it was measured to help. Where base hears the speech, small adds three minutes to find
   the same words — and on the clip that actually contains swearing, small was the one that
   sanitised it.
+- **A second pass places the beep.** The first pass gives the right words at the wrong times:
+  whisper works in thirty-second windows and a word early in one is dragged towards the window's
+  start, which put swearing at 30.00 s that is at 30.68 s. Re-recognising six seconds around each
+  hit puts the word in the middle of a single window, where there is no boundary to pull it, and
+  places it to within 20 ms. When that pass cannot place the words — its timestamps sometimes pile
+  onto one edge of the snippet — the rough timing stands and the window widens to 1.95 s rather
+  than risk missing.
 - **Separation is windowed.** Only the censor windows go through the UVR model, so the cost is
   proportional to how much swearing there is rather than to the length of the video.
 - **The native build must be optimised.** AGP sets `CMAKE_BUILD_TYPE=Debug` for debug variants,
