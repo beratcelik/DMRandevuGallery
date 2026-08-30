@@ -26,6 +26,7 @@ final class GalleryViewModel {
     private(set) var blurPlates: Bool
     private(set) var fastPlates: Bool
     private(set) var watermark: Bool
+    private(set) var censorAudio: Bool
 
     private let igId: String
     private let repository = ServiceLocator.repository!
@@ -43,6 +44,7 @@ final class GalleryViewModel {
         blurPlates = settings.blurPlates
         fastPlates = settings.fastPlates
         watermark = settings.watermark
+        censorAudio = settings.censorAudio
     }
 
     // MARK: - Paging
@@ -204,6 +206,11 @@ final class GalleryViewModel {
         watermark = enabled
     }
 
+    func setCensorAudio(_ enabled: Bool) {
+        settings.censorAudio = enabled
+        censorAudio = enabled
+    }
+
     /// The handle to burn in, or nil when the watermark is off. Drives preview and export alike.
     func watermarkHandle() -> String? {
         let handle = settings.igUsername
@@ -216,7 +223,9 @@ final class GalleryViewModel {
             blurFaces: blurFaces,
             blurPlates: blurPlates,
             fastPlates: fastPlates,
-            watermarkHandle: watermarkHandle()
+            watermarkHandle: watermarkHandle(),
+            censorAudio: censorAudio,
+            censorInsults: settings.censorInsults
         )
     }
 

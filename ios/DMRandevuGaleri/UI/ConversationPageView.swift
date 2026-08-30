@@ -30,6 +30,8 @@ struct ConversationPageView: View {
     @State private var durationMS: Int64 = 0
     @State private var scrubbing = false
     @State private var holding = false
+    /// Non-nil only while the models are coming down, which is a one-off on first use.
+    @State private var censorDownload: Int?
 
     /// Counts out the press before fast playback starts, and is cancelled if the finger lifts or
     /// wanders first.
@@ -274,6 +276,33 @@ struct ConversationPageView: View {
         }
     }
 
+    /// Switches the censor on, downloading the speech models the first time.
+    ///
+    /// Only switched on once every model is present and verified: a half-downloaded one would
+    /// fail every export rather than censor anything.
+    private func toggleCensor() {
+        if model.censorAudio {
+            model.setCensorAudio(false)
+            model.toast = Strings.censorAudioOff
+            return
+        }
+        censorDownload = 0
+        Task {
+            defer { censorDownload = nil }
+            do {
+                try await ServiceLocator.censorModels.ensureAvailable { fraction in
+                    Task { @MainActor in censorDownload = Int(fraction * 100) }
+                }
+                model.setCensorAudio(true)
+                model.toast = Strings.censorAudioOn
+            } catch is CancellationError {
+                // The page went away; nothing to report.
+            } catch {
+                model.toast = Strings.censorModelsFailed
+            }
+        }
+    }
+
     private var filterToggles: some View {
         HStack(spacing: 4) {
             // Up here rather than in the action row below, which is already tight on width.
@@ -321,6 +350,21 @@ struct ConversationPageView: View {
                 model.toast = model.watermark ? Strings.watermarkOn : Strings.watermarkOff
             }
             .accessibilityIdentifier("toggleWatermark")
+
+            if let percent = censorDownload {
+                Text("%\(percent)")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .frame(width: Self.toggleTouch, height: Self.toggleTouch)
+                    .accessibilityIdentifier("censorDownload")
+            } else {
+                toggle(
+                    icon: model.censorAudio ? "speaker.slash.fill" : "speaker.wave.2",
+                    on: model.censorAudio,
+                    action: toggleCensor
+                )
+                .accessibilityIdentifier("toggleCensor")
+            }
 
             // How many customers are still waiting. The dots below already say how many videos
             // this one has, so the per-video position is not repeated here.

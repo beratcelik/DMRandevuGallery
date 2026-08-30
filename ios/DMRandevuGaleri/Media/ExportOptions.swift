@@ -11,9 +11,13 @@ struct ExportOptions: Equatable {
     var fastPlates = true
     /// Account handle to burn into the picture, or nil to leave the video unmarked.
     var watermarkHandle: String?
+    /// Beep over Turkish swearing, leaving the background sound playing underneath.
+    var censorAudio = false
+    /// Whether milder insults are beeped too, or only outright profanity.
+    var censorInsults = false
 
     var changesNothing: Bool {
-        !blurFaces && !blurPlates && watermarkHandle == nil
+        !blurFaces && !blurPlates && watermarkHandle == nil && !censorAudio
     }
 
     static let none = ExportOptions()

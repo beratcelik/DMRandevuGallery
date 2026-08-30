@@ -96,7 +96,7 @@ final class Downloader {
             onProgress(Self.downloadShare + percent * (100 - Self.downloadShare) / 100)
         }
         switch result {
-        case .exported(let url, _): return url
+        case .exported(let url, _, _): return url
         case .nothingToDo: return input
         }
     }

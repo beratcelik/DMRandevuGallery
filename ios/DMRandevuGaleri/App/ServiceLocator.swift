@@ -9,6 +9,9 @@ enum ServiceLocator {
     private(set) static var cookies: CookieStore!
     private(set) static var session: URLSession!
     private(set) static var repository: GalleryRepository!
+    /// Downloads and verifies the speech models the censor filter needs.
+    static let censorModels = CensorModels()
+
     private(set) static var exporter: VideoExporter!
     private(set) static var downloader: Downloader!
 
@@ -29,7 +32,7 @@ enum ServiceLocator {
         session = URLSession(configuration: configuration)
 
         repository = GalleryRepository(session: session, settings: settings, cookies: cookies)
-        exporter = VideoExporter()
+        exporter = VideoExporter(audioCensor: AudioCensor(models: censorModels))
         downloader = Downloader(session: session, repository: repository, exporter: exporter)
     }
 }

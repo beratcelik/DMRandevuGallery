@@ -141,7 +141,9 @@ struct CaptionSheetView: View {
                         fastPlates: settings.fastPlates,
                         watermarkHandle: settings.watermark && !settings.igUsername.isEmpty
                             ? settings.igUsername
-                            : nil
+                            : nil,
+                        censorAudio: settings.censorAudio,
+                        censorInsults: settings.censorInsults
                     )
                 ) { shareProgress = $0 }
                 // Instagram accepts no caption on any hand-off, so it travels via the clipboard —

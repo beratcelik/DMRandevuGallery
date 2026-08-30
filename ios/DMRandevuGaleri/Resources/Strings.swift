@@ -54,6 +54,15 @@ enum Strings {
     static let watermarkToggle = "Filigran"
     static let watermarkOn = "Filigran açık — hesap adı videonun üzerinde gezinecek"
     static let watermarkOff = "Filigran kapalı"
+    static let censorAudioToggle = "Küfür filtresi"
+    static let censorAudioOn =
+        "Küfür filtresi açık — küfürler bip sesiyle kapatılacak, arka plandaki ses devam edecek"
+    static let censorAudioOff = "Küfür filtresi kapalı"
+    static func censorModelsDownloading(_ percent: Int) -> String {
+        "Küfür filtresi hazırlanıyor — %\(percent)"
+    }
+    static let censorModelsFailed =
+        "Küfür filtresi indirilemedi — bağlantıyı kontrol edip tekrar deneyin"
     static let exportFailed = "Video işlenemedi — aktarılmadı. Ham haliyle aktarmak için filtreleri kapatın."
 
     static func progress(_ percent: Int) -> String { "%\(percent)" }

@@ -62,6 +62,20 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Key.watermark) }
     }
 
+    /// Beep over Turkish swearing in every exported video. Off by default: it needs a quarter of
+    /// a gigabyte of models downloaded before it can do anything.
+    var censorAudio: Bool {
+        get { defaults.bool(forKey: Key.censorAudio) }
+        set { defaults.set(newValue, forKey: Key.censorAudio) }
+    }
+
+    /// Beep milder insults too, not only outright profanity. Off by default — "manyak" fired on a
+    /// clip where nobody swore.
+    var censorInsults: Bool {
+        get { defaults.bool(forKey: Key.censorInsults) }
+        set { defaults.set(newValue, forKey: Key.censorInsults) }
+    }
+
     private enum Key {
         static let baseURL = "base_url"
         static let admin = "admin_username"
@@ -70,5 +84,7 @@ final class SettingsStore {
         static let blurPlates = "blur_plates"
         static let fastPlates = "fast_plates"
         static let watermark = "watermark"
+        static let censorAudio = "censor_audio"
+        static let censorInsults = "censor_insults"
     }
 }

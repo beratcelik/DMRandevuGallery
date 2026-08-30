@@ -13,7 +13,10 @@ import XCTest
 /// failing, the same way the Android instrumented tests do.
 final class VideoExportTests: XCTestCase {
 
-    private let exporter = VideoExporter()
+    private let exporter = VideoExporter(
+        // These exercise the picture, not the audio; the censor is never switched on.
+        audioCensor: AudioCensor(models: CensorModels())
+    )
 
     private lazy var sample: URL? = {
         if let path = ProcessInfo.processInfo.environment["DMRANDEVU_SAMPLE_VIDEO"],
@@ -45,7 +48,7 @@ final class VideoExportTests: XCTestCase {
             options: ExportOptions(blurFaces: true)
         ) { _ in }
 
-        guard case .exported(let url, let blurred) = result, blurred?.isEmpty == false else {
+        guard case .exported(let url, let blurred, _) = result, blurred?.isEmpty == false else {
             throw XCTSkip("No faces in the sample — use a clip with a visible face")
         }
 
@@ -77,7 +80,7 @@ final class VideoExportTests: XCTestCase {
             options: ExportOptions(blurPlates: true, fastPlates: false)
         ) { _ in }
 
-        guard case .exported(let url, let covered) = result, let covered, !covered.isEmpty else {
+        guard case .exported(let url, let covered, _) = result, let covered, !covered.isEmpty else {
             throw XCTSkip("No plates in the sample — use a clip with a visible plate")
         }
 
@@ -108,7 +111,7 @@ final class VideoExportTests: XCTestCase {
             options: ExportOptions(watermarkHandle: "trafik_cezasi")
         ) { _ in }
 
-        guard case .exported(let url, _) = result else {
+        guard case .exported(let url, _, _) = result else {
             return XCTFail("A watermark always changes the picture, so this must re-encode")
         }
 
