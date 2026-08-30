@@ -35,7 +35,8 @@ object CensorWindows {
             .filter { it in words.indices }
             .map { index ->
                 val word = words[index]
-                // Runs well past where the word reportedly ends.
+                // Runs past where the word reportedly ends, by however much is still unaccounted
+                // for after calibration.
                 //
                 // The recognizer's timings run early on this phone. Measured against the same
                 // clip cut by hand: it places "Amına koydu mu" at 30.00-30.97 s where the words
@@ -43,15 +44,15 @@ object CensorWindows {
                 // across the phrase. Ending the beep where the word reportedly ends stops in the
                 // middle of the swearing, which is what the operator heard.
                 //
-                // Bounding this by the *next* word's end was the first attempt and does not
-                // work: that timing is shifted early too, so the bound moves with the error
-                // instead of correcting it. A flat allowance is both simpler and immune to it.
+                // Bounding this by the *next* word's end was an early attempt and does not work:
+                // that timing is shifted early too, so the bound moves with the error instead of
+                // correcting it.
                 //
-                // The window is not moved forward, only stretched. Shifting it would be tighter,
-                // but it would beep late wherever the timings are in fact correct, and a late
-                // beep leaves the swearing audible — the one outcome this filter exists to
-                // prevent. Stretching covers both readings and costs about a second of extra
-                // beep before the word.
+                // Stretching by the whole error was the next, and it beeps a second of innocent
+                // audio before every swear word. [TimingCalibration] measures the offset for the
+                // clip instead, so what is left here only has to cover what the measurement
+                // missed. When it could not measure, the caller passes the wide allowance back
+                // in: too much beep is a nuisance, too little leaves the swearing audible.
                 val end = word.endUs + shiftAllowanceUs
                 (word.startUs - padUs).coerceAtLeast(0) to (end + padUs).coerceAtMost(durationUs)
             }
@@ -78,6 +79,13 @@ object CensorWindows {
      * margin that the end of a phrase, where the drift is largest, is still covered.
      */
     const val SHIFT_ALLOWANCE_US = 900_000L
+
+    /**
+     * What is left to cover once the offset has actually been measured: the residual error of
+     * the measurement itself, which is a frame or two either way, plus a little for the word
+     * boundary.
+     */
+    const val RESIDUAL_ALLOWANCE_US = 200_000L
 
     /**
      * How far either side of the word the beep reaches.

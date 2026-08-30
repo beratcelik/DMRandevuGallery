@@ -64,11 +64,18 @@ class CensorAudioExportTest {
                 windows.joinToString { "${it.startUs / 1000}-${it.endUs / 1000}" },
             covering.isNotEmpty()
         )
-        // And it must not be covering it by being enormous.
+        // And it must not be covering it by being enormous. The phrase is 1.1 s and this allows
+        // 2.0 s, which is not a comfortable margin — it is the current honest limit.
+        //
+        // On this clip the recognizer's timings cannot be calibrated (its words are reported
+        // back to back, covering 80% of the audio, so there are no gaps to align against) and
+        // the residual uncertainty is close to a second. A window narrower than this would stop
+        // before the end of the swearing on the very clip it was measured against. Tightening it
+        // needs a better timing source, not a smaller number here.
         assertTrue(
             "the covering window is too wide: " +
                 covering.joinToString { "${(it.endUs - it.startUs) / 1000}ms" },
-            covering.any { it.endUs - it.startUs < 3_000_000 }
+            covering.any { it.endUs - it.startUs < 2_000_000 }
         )
 
         assertTrue("no output", output.exists() && output.length() > 0)

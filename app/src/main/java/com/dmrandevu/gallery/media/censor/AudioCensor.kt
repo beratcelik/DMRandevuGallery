@@ -74,7 +74,29 @@ class AudioCensor(
 
         if (found.hits.isEmpty()) return CensorPlan.nothing()
 
-        val windows = CensorWindows.build(found.words, found.hits, audio.durationUs)
+        // The recognizer's timings run ahead of the audio; how far is measured per clip rather
+        // than assumed, because assuming the worst means a second of beep before every word.
+        val calibration = TimingCalibration.estimate(audio, found.words)
+        val words = if (calibration.shiftUs == 0L) {
+            found.words
+        } else {
+            found.words.map {
+                it.copy(
+                    startUs = it.startUs + calibration.shiftUs,
+                    endUs = it.endUs + calibration.shiftUs
+                )
+            }
+        }
+        val windows = CensorWindows.build(
+            words,
+            found.hits,
+            audio.durationUs,
+            shiftAllowanceUs = if (calibration.confident) {
+                CensorWindows.RESIDUAL_ALLOWANCE_US
+            } else {
+                CensorWindows.SHIFT_ALLOWANCE_US
+            }
+        )
         if (windows.isEmpty()) return CensorPlan.nothing()
 
         val patches = VocalSeparator(models.fileFor(CensorModels.Model.VOCAL_SEPARATOR)).use {

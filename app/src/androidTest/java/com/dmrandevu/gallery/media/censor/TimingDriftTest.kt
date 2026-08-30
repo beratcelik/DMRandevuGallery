@@ -75,7 +75,7 @@ class TimingDriftTest {
                     "$label: ${words.size} words in ${System.currentTimeMillis() - startedAt} ms"
                 )
                 words.forEachIndexed { i, w ->
-                    if (w.startUs in 28_500_000..33_000_000) {
+                    if (true) {
                         Log.i(TAG, "    [$i] ${w.text} ${w.startUs / 1000}-${w.endUs / 1000}ms")
                     }
                 }
