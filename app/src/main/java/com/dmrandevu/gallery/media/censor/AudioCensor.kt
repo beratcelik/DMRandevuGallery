@@ -48,10 +48,11 @@ class AudioCensor(
         input: File,
         tiers: Set<ProfanityLexicon.Tier>,
         manual: List<CensorWindow> = emptyList(),
+        byHand: Boolean = false,
         onProgress: (Int) -> Unit
     ): CensorPlan = withContext(Dispatchers.Default) {
         try {
-            analyzeOrThrow(input, tiers, manual, onProgress)
+            analyzeOrThrow(input, tiers, manual, byHand, onProgress)
         } catch (e: CensorFailedException) {
             throw e
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -65,6 +66,7 @@ class AudioCensor(
         input: File,
         tiers: Set<ProfanityLexicon.Tier>,
         manual: List<CensorWindow>,
+        byHand: Boolean,
         onProgress: (Int) -> Unit
     ): CensorPlan {
         if (!models.allInstalled) {
@@ -77,11 +79,14 @@ class AudioCensor(
 
         if (audio.frameCount == 0L) return CensorPlan.nothing()
 
-        // Marked by hand means the listening is already done, and done by someone who can hear
-        // what the recognizer cannot. Running it anyway costs three and a half minutes to be told
-        // what the operator has already said.
-        val windows = if (manual.isNotEmpty()) {
-            Log.i(TAG, "${manual.size} marked stretches; not running recognition")
+        // By hand means the listening is already done, by someone who can hear what the
+        // recognizer cannot. Running it anyway costs minutes to be told what the operator has
+        // already said — on exactly the clips it failed, which is why they marked them.
+        //
+        // A choice rather than a guess. Deciding this by whether any marks exist would silently
+        // stop looking at the rest of a clip the moment one word was marked on it.
+        val windows = if (byHand) {
+            Log.i(TAG, "by hand: beeping ${manual.size} marked stretches, not listening")
             onProgress(RECOGNISE_TO)
             mergeAll(manual, audio)
         } else {
@@ -89,7 +94,9 @@ class AudioCensor(
                 val found = recognizer.findProfanity(audio, tiers) { fraction ->
                     onProgress(band(RECOGNISE_FROM, RECOGNISE_TO, fraction))
                 }
-                windowsFor(audio, found)
+                // Marks stand alongside whatever was heard: the operator saw something the
+                // recognizer might not, and both belong in the same export.
+                mergeAll(windowsFor(audio, found, manual) + manual, audio)
             }
         }
         if (windows.isEmpty()) return CensorPlan.nothing()
@@ -115,7 +122,8 @@ class AudioCensor(
      */
     private fun windowsFor(
         audio: AudioTrackDecoder.DecodedAudio,
-        found: SpeechRecognizer.Result
+        found: SpeechRecognizer.Result,
+        manual: List<CensorWindow>
     ): List<CensorWindow> {
         // A second look at a few seconds around each hit places it to within a frame or two, so
         // the beep can be tight. Where that could not be confirmed the rough timing stands, and
@@ -129,6 +137,13 @@ class AudioCensor(
             found.words, found.hits, audio.durationUs, shiftAllowanceUs = allowance
         )
         if (found.unplaced.isEmpty()) return placed
+
+        // Swearing was heard and could not be timed — but the operator has been through this clip
+        // by hand, so they have seen what the app could not and the export is theirs to make.
+        if (manual.isNotEmpty()) {
+            Log.i(TAG, "unplaced ${found.unplaced}, but this clip was marked by hand")
+            return placed
+        }
 
         // Something was heard and could not be given a time, so the export stops here.
         //

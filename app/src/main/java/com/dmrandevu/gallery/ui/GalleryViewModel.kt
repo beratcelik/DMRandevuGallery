@@ -69,6 +69,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     private val _censorAudio = MutableStateFlow(settings.censorAudio)
     val censorAudio: StateFlow<Boolean> = _censorAudio
 
+    private val _censorByHand = MutableStateFlow(settings.censorByHand)
+    val censorByHand: StateFlow<Boolean> = _censorByHand
+
     private val _events = Channel<GalleryEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
@@ -295,6 +298,11 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         _censorAudio.value = enabled
     }
 
+    fun setCensorByHand(byHand: Boolean) {
+        settings.censorByHand = byHand
+        _censorByHand.value = byHand
+    }
+
     /** The handle to burn in, or null when the watermark is off. Drives preview and export alike. */
     fun watermarkHandle(): String? =
         settings.igUsername.takeIf { _watermark.value && it.isNotBlank() }
@@ -330,6 +338,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         watermarkHandle = watermarkHandle(),
         censorAudio = _censorAudio.value,
         censorInsults = settings.censorInsults,
+        censorByHand = _censorByHand.value,
         manualWindows = conversationKey?.let { marks.forMedia(it, mediaIndex) }.orEmpty()
     )
 

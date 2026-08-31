@@ -45,6 +45,16 @@ class SettingsStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit { putBoolean(KEY_CENSOR_AUDIO, value) }
 
     /**
+     * Whether the censor listens to the video or only beeps what was marked by hand.
+     *
+     * Automatic on a clip the recognizer manages; by hand on the ones it does not, where running
+     * it costs minutes to be told what the operator has already said.
+     */
+    var censorByHand: Boolean
+        get() = prefs.getBoolean(KEY_CENSOR_BY_HAND, DEFAULT_CENSOR_BY_HAND)
+        set(value) = prefs.edit { putBoolean(KEY_CENSOR_BY_HAND, value) }
+
+    /**
      * Beep milder insults too, not only outright profanity. Off by default — the spike had
      * "manyak" firing on a clip where nobody swore.
      */
@@ -66,6 +76,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val DEFAULT_WATERMARK = false
         const val DEFAULT_CENSOR_AUDIO = false
         const val DEFAULT_CENSOR_INSULTS = false
+        const val DEFAULT_CENSOR_BY_HAND = false
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_ADMIN = "admin_username"
         private const val KEY_IG = "ig_username"
@@ -75,5 +86,6 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val KEY_WATERMARK = "watermark"
         private const val KEY_CENSOR_AUDIO = "censor_audio"
         private const val KEY_CENSOR_INSULTS = "censor_insults"
+        private const val KEY_CENSOR_BY_HAND = "censor_by_hand"
     }
 }

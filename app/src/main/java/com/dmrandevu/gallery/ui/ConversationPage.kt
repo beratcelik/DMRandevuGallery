@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.TouchApp
 import kotlinx.coroutines.CancellationException
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -123,6 +124,7 @@ fun ConversationPage(
     val fastPlates by viewModel.fastPlates.collectAsStateWithLifecycle()
     val watermark by viewModel.watermark.collectAsStateWithLifecycle()
     val censorAudio by viewModel.censorAudio.collectAsStateWithLifecycle()
+    val censorByHand by viewModel.censorByHand.collectAsStateWithLifecycle()
     // Non-null only while the models are coming down, which is a one-off on first use.
     var censorDownload by remember { mutableStateOf<Int?>(null) }
     // True only while the server is being asked for a fresh link.
@@ -455,15 +457,28 @@ fun ConversationPage(
                         tint = if (watermark) Color.White else Color.White.copy(alpha = 0.45f)
                     )
                 }
-                IconButton(
-                    modifier = Modifier.size(FILTER_TOGGLE),
-                    enabled = censorDownload == null,
-                    onClick = {
-                        if (censorAudio) {
+                Box(
+                    // Tap switches the filter; holding switches whether it listens to the video
+                    // or only beeps what was marked by hand — the same shape as the plate toggle,
+                    // because it is the same kind of choice: a knob to set, not one to reach for.
+                    Modifier
+                        .size(FILTER_TOGGLE)
+                        .combinedClickable(
+                            enabled = censorDownload == null,
+                            onLongClick = {
+                                viewModel.setCensorByHand(!censorByHand)
+                                Toast.makeText(
+                                    context,
+                                    if (censorByHand) R.string.censor_auto else R.string.censor_by_hand,
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            },
+                            onClick = {
+                                if (censorAudio) {
                             viewModel.setCensorAudio(false)
                             Toast.makeText(context, R.string.censor_audio_off, Toast.LENGTH_SHORT)
                                 .show()
-                            return@IconButton
+                            return@combinedClickable
                         }
                         // The models are a third of a gigabyte and are not in the app, so the
                         // first time this is switched on it has to fetch them. Switched on only
@@ -489,7 +504,9 @@ fun ConversationPage(
                                 censorDownload = null
                             }
                         }
-                    }
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     val progress = censorDownload
                     if (progress != null) {
@@ -499,6 +516,8 @@ fun ConversationPage(
                             style = MaterialTheme.typography.labelSmall
                         )
                     } else {
+                        val tint =
+                            if (censorAudio) Color.White else Color.White.copy(alpha = 0.45f)
                         Icon(
                             imageVector = if (censorAudio) {
                                 Icons.AutoMirrored.Filled.VolumeOff
@@ -506,8 +525,21 @@ fun ConversationPage(
                                 Icons.AutoMirrored.Filled.VolumeUp
                             },
                             contentDescription = stringResource(R.string.censor_audio_toggle),
-                            tint = if (censorAudio) Color.White else Color.White.copy(alpha = 0.45f)
+                            tint = tint
                         )
+                        if (censorAudio && censorByHand) {
+                            // A hand on the corner for the by-hand setting, nothing for
+                            // automatic — so the icon says which of the two the long press left
+                            // it on, the way the plate toggle's bolt does.
+                            Icon(
+                                imageVector = Icons.Filled.TouchApp,
+                                contentDescription = stringResource(R.string.censor_by_hand_badge),
+                                tint = tint,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(13.dp)
+                            )
+                        }
                     }
                 }
                 // How many customers are still waiting. The dots below already say how many
@@ -523,7 +555,9 @@ fun ConversationPage(
             }
         }
 
-        if (controlsShown) {
+        // The scrubber stays up while the filter is on. Marking is aiming at a moment, and a
+        // bar that hides itself three seconds in is no use for that.
+        if (controlsShown || censorAudio) {
             VideoScrubber(
                 marks = remember(markRevision, conversation.key, mediaPager.currentPage) {
                     viewModel.manualMarks(conversation.key, mediaPager.currentPage)

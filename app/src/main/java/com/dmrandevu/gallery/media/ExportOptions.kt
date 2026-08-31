@@ -19,6 +19,8 @@ data class ExportOptions(
     val censorAudio: Boolean = false,
     /** Whether milder insults are beeped too, or only outright profanity. */
     val censorInsults: Boolean = false,
+    /** Beep only what was marked by hand, without listening to the video at all. */
+    val censorByHand: Boolean = false,
     /**
      * Stretches the operator marked by hand, which are beeped whatever the recognizer makes of
      * them. On a clip it cannot place these are the only thing standing between the swearing and

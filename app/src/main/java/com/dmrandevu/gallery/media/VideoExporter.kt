@@ -119,7 +119,12 @@ class VideoExporter(
             null
         } else {
             wrapFailures("Censoring the audio failed") {
-                audioCensor.analyze(input, tiersFor(options), options.manualWindows) { percent ->
+                audioCensor.analyze(
+                    input,
+                    tiersFor(options),
+                    options.manualWindows,
+                    byHand = options.censorByHand
+                ) { percent ->
                     onProgress(scanShare + percent * (censorFloor - scanShare) / 100)
                 }
             }
