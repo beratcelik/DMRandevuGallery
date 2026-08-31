@@ -17,7 +17,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dmrandevu.gallery.R
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import java.util.Locale
+
+/** The red of a marked stretch, on the scrubber and on the button that makes them. */
+val MarkColour = Color(0xFFE53935)
 
 /**
  * The scrubber under the video: where you are, how much is left, and a bar to move about with.
@@ -31,7 +40,9 @@ fun VideoScrubber(
     durationMs: Long,
     onScrubTo: (Long) -> Unit,
     onScrubFinished: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Stretches marked for beeping, drawn along the track so they can be seen and aimed at. */
+    marks: List<LongRange> = emptyList()
 ) {
     // Until the player reports a duration there is nothing meaningful to scrub along.
     if (durationMs <= 0) return
@@ -47,19 +58,44 @@ fun VideoScrubber(
             color = Color.White,
             style = MaterialTheme.typography.labelMedium
         )
-        Slider(
-            value = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f),
-            onValueChange = { onScrubTo((it * durationMs).toLong()) },
-            onValueChangeFinished = onScrubFinished,
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-            ),
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 12.dp)
-        )
+        ) {
+            // Under the slider rather than over it: the thumb has to stay findable while a mark
+            // is being aimed at.
+            if (marks.isNotEmpty()) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .align(Alignment.Center)
+                ) {
+                    for (mark in marks) {
+                        val from = (mark.first.toFloat() / durationMs).coerceIn(0f, 1f)
+                        val to = (mark.last.toFloat() / durationMs).coerceIn(0f, 1f)
+                        drawRect(
+                            color = MarkColour,
+                            topLeft = Offset(from * size.width, 0f),
+                            // A brief mark still has to be visible, so it never draws thinner
+                            // than a couple of pixels.
+                            size = Size(maxOf((to - from) * size.width, 3f), size.height)
+                        )
+                    }
+                }
+            }
+            Slider(
+                value = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f),
+                onValueChange = { onScrubTo((it * durationMs).toLong()) },
+                onValueChangeFinished = onScrubFinished,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color.White.copy(alpha = 0.75f),
+                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                )
+            )
+        }
         Text(
             // Counting down rather than up: how much is left is the thing worth knowing.
             text = "-${clock(durationMs - positionMs)}",

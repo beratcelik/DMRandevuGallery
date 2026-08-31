@@ -180,7 +180,13 @@ fun CaptionSheet(
                                     watermarkHandle = settings.igUsername
                                         .takeIf { settings.watermark && it.isNotBlank() },
                                     censorAudio = settings.censorAudio,
-                                    censorInsults = settings.censorInsults
+                                    censorInsults = settings.censorInsults,
+                                    // The sheet has no view model, so the marks are read the
+                                    // same way the toggles are — straight from the store.
+                                    manualWindows = ServiceLocator.manualMarks.forMedia(
+                                        conversation.key,
+                                        conversation.urls.indexOf(rawMediaUrl).coerceAtLeast(0)
+                                    )
                                 )
                             ) { shareProgress = it }
                             // Instagram drops EXTRA_TEXT, so the caption travels via the clipboard —

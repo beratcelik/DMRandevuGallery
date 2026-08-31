@@ -9,6 +9,7 @@ import com.dmrandevu.gallery.media.Downloader
 import com.dmrandevu.gallery.media.VideoExporter
 import com.dmrandevu.gallery.media.censor.AudioCensor
 import com.dmrandevu.gallery.media.censor.CensorModels
+import com.dmrandevu.gallery.media.censor.ManualMarks
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -35,6 +36,10 @@ object ServiceLocator {
         private set
 
     lateinit var censorModels: CensorModels
+        private set
+
+    /** Stretches the operator marked by hand, for clips the recognizer cannot place. */
+    lateinit var manualMarks: ManualMarks
         private set
 
     lateinit var exporter: VideoExporter
@@ -65,6 +70,7 @@ object ServiceLocator {
             .build()
         repository = GalleryRepository(client, settings, cookieJar)
         censorModels = CensorModels(appContext, client)
+        manualMarks = ManualMarks(prefs)
         exporter = VideoExporter(appContext, AudioCensor(appContext, censorModels))
         downloader = Downloader(appContext, client, repository, exporter)
     }

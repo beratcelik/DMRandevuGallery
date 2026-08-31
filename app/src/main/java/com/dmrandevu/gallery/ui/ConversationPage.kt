@@ -66,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.dmrandevu.gallery.R
+import com.dmrandevu.gallery.media.censor.CensorWindow
 import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
@@ -124,6 +125,9 @@ fun ConversationPage(
     var censorDownload by remember { mutableStateOf<Int?>(null) }
     // True only while the server is being asked for a fresh link.
     var refreshing by remember { mutableStateOf(false) }
+    /// Where the video was when the mark button went down, or null when nothing is being marked.
+    var markingFrom by remember { mutableStateOf<Long?>(null) }
+    val markRevision = viewModel.markRevision
     // Exports share one cache directory and one progress readout, so they have to run one at a
     // time — a second one starting would wipe the first one's working files out from under it.
     val exporting = downloading || sharingStory || sharingReels
@@ -514,6 +518,10 @@ fun ConversationPage(
 
         if (controlsShown) {
             VideoScrubber(
+                marks = remember(markRevision, conversation.key, mediaPager.currentPage) {
+                    viewModel.manualMarks(conversation.key, mediaPager.currentPage)
+                        .map { it.startUs / 1000..it.endUs / 1000 }
+                },
                 positionMs = positionMs,
                 durationMs = durationMs,
                 onScrubTo = {
@@ -528,6 +536,38 @@ fun ConversationPage(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 92.dp)
             )
+
+            if (censorAudio) {
+                MarkButton(
+                    marking = markingFrom != null,
+                    onPress = {
+                        // Where the video is now, not where the finger went down on screen.
+                        markingFrom = positionMs
+                        controlsShown = true
+                    },
+                    onRelease = {
+                        val from = markingFrom
+                        markingFrom = null
+                        if (from != null && positionMs > from) {
+                            viewModel.addMark(
+                                conversation.key,
+                                mediaPager.currentPage,
+                                CensorWindow(from * 1_000, positionMs * 1_000)
+                            )
+                        }
+                        controlsShown = true
+                    },
+                    onRemove = {
+                        viewModel.removeMarkAt(
+                            conversation.key, mediaPager.currentPage, positionMs * 1_000
+                        )
+                        controlsShown = true
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 140.dp)
+                )
+            }
         }
 
         // Dots + actions.
@@ -573,7 +613,7 @@ fun ConversationPage(
                             val saved = downloader.saveToGallery(
                                 rawUrl,
                                 conversation.clientName,
-                                viewModel.exportOptions()
+                                viewModel.exportOptions(conversation.key, mediaPager.currentPage)
                             ) { exportProgress = it }
                             if (saved) R.string.download_done else R.string.download_failed
                         } catch (e: UnauthorizedException) {
@@ -614,7 +654,7 @@ fun ConversationPage(
                             val file = downloader.downloadForShare(
                                 rawUrl,
                                 conversation.clientName,
-                                viewModel.exportOptions()
+                                viewModel.exportOptions(conversation.key, mediaPager.currentPage)
                             ) { exportProgress = it }
                             InstagramSharing.openStoryComposer(context, file)
                         } catch (e: UnauthorizedException) {
@@ -659,7 +699,7 @@ fun ConversationPage(
                             downloader.saveToGallery(
                                 rawUrl,
                                 conversation.clientName,
-                                viewModel.exportOptions()
+                                viewModel.exportOptions(conversation.key, mediaPager.currentPage)
                             ) { exportProgress = it }
                             exportProgress = null
                             val caption = runCatching {
@@ -807,6 +847,60 @@ private fun ActionButton(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = 2.dp)
             )
+        }
+    }
+}
+
+/**
+ * Hold while the swearing plays; let go when it stops.
+ *
+ * The obvious alternative was dragging a range along the scrubber, which means finding a moment
+ * you have already heard go past. Holding is how the operator experiences the problem: the word
+ * arrives, the thumb goes down, the word ends, the thumb comes up.
+ *
+ * Deliberately not the video surface, which already means run-at-triple-speed while held.
+ */
+@Composable
+private fun MarkButton(
+    marking: Boolean,
+    onPress: () -> Unit,
+    onRelease: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    if (marking) MarkColour else Color.Black.copy(alpha = 0.55f),
+                    CircleShape
+                )
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown()
+                        onPress()
+                        // Whether the finger lifted or slid off, the mark ends here — a mark left
+                        // open would keep growing for the rest of the video.
+                        waitForUpOrCancellation()
+                        onRelease()
+                    }
+                }
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = stringResource(
+                    if (marking) R.string.mark_holding else R.string.mark_hint
+                ),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        TextButton(onClick = onRemove) {
+            Text(stringResource(R.string.mark_remove), color = Color.White.copy(alpha = 0.8f))
         }
     }
 }

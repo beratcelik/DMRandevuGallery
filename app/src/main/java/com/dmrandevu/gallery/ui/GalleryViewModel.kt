@@ -1,6 +1,9 @@
 package com.dmrandevu.gallery.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +11,7 @@ import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.ExportOptions
+import com.dmrandevu.gallery.media.censor.CensorWindow
 import com.dmrandevu.gallery.player.PlaybackFailure
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -29,6 +33,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     private val repo = ServiceLocator.repository
     private val settings = ServiceLocator.settings
+    private val marks = ServiceLocator.manualMarks
 
     val items = mutableStateListOf<Conversation>()
 
@@ -294,14 +299,38 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     fun watermarkHandle(): String? =
         settings.igUsername.takeIf { _watermark.value && it.isNotBlank() }
 
-    /** What the export buttons should ask for, given how the two toggles are set. */
-    fun exportOptions() = ExportOptions(
+    /** Every stretch marked by hand on one video. */
+    fun manualMarks(conversationKey: String, mediaIndex: Int): List<CensorWindow> =
+        marks.forMedia(conversationKey, mediaIndex)
+
+    fun addMark(conversationKey: String, mediaIndex: Int, window: CensorWindow) {
+        marks.add(conversationKey, mediaIndex, window)
+        markRevision++
+    }
+
+    fun removeMarkAt(conversationKey: String, mediaIndex: Int, atUs: Long) {
+        marks.removeAt(conversationKey, mediaIndex, atUs)
+        markRevision++
+    }
+
+    /**
+     * Bumped on every change so the page redraws.
+     *
+     * The marks live in preferences rather than in state, because losing an afternoon of them to
+     * a swipe would be worse than the extra bookkeeping.
+     */
+    var markRevision by mutableIntStateOf(0)
+        private set
+
+    /** What the export buttons should ask for, given how the toggles are set. */
+    fun exportOptions(conversationKey: String? = null, mediaIndex: Int = 0) = ExportOptions(
         blurFaces = _blurFaces.value,
         blurPlates = _blurPlates.value,
         fastPlates = _fastPlates.value,
         watermarkHandle = watermarkHandle(),
         censorAudio = _censorAudio.value,
-        censorInsults = settings.censorInsults
+        censorInsults = settings.censorInsults,
+        manualWindows = conversationKey?.let { marks.forMedia(it, mediaIndex) }.orEmpty()
     )
 
     fun reportSessionLost() {

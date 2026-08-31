@@ -47,10 +47,11 @@ class AudioCensor(
     suspend fun analyze(
         input: File,
         tiers: Set<ProfanityLexicon.Tier>,
+        manual: List<CensorWindow> = emptyList(),
         onProgress: (Int) -> Unit
     ): CensorPlan = withContext(Dispatchers.Default) {
         try {
-            analyzeOrThrow(input, tiers, onProgress)
+            analyzeOrThrow(input, tiers, manual, onProgress)
         } catch (e: CensorFailedException) {
             throw e
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -63,6 +64,7 @@ class AudioCensor(
     private suspend fun analyzeOrThrow(
         input: File,
         tiers: Set<ProfanityLexicon.Tier>,
+        manual: List<CensorWindow>,
         onProgress: (Int) -> Unit
     ): CensorPlan {
         if (!models.allInstalled) {
@@ -79,7 +81,7 @@ class AudioCensor(
             val found = recognizer.findProfanity(audio, tiers) { fraction ->
                 onProgress(band(RECOGNISE_FROM, RECOGNISE_TO, fraction))
             }
-            windowsFor(audio, found)
+            windowsFor(audio, found, manual)
         }
         if (windows.isEmpty()) return CensorPlan.nothing()
 
@@ -104,7 +106,8 @@ class AudioCensor(
      */
     private fun windowsFor(
         audio: AudioTrackDecoder.DecodedAudio,
-        found: SpeechRecognizer.Result
+        found: SpeechRecognizer.Result,
+        manual: List<CensorWindow>
     ): List<CensorWindow> {
         // A second look at a few seconds around each hit places it to within a frame or two, so
         // the beep can be tight. Where that could not be confirmed the rough timing stands, and
@@ -117,7 +120,17 @@ class AudioCensor(
         val placed = CensorWindows.build(
             found.words, found.hits, audio.durationUs, shiftAllowanceUs = allowance
         )
-        if (found.unplaced.isEmpty()) return placed
+        // Marked stretches are beeped as given: the operator heard them, which is a better
+        // authority than the recognizer, and they are already where they belong.
+        val withManual = if (manual.isEmpty()) placed else mergeAll(placed + manual, audio)
+        if (found.unplaced.isEmpty()) return withManual
+
+        // Swearing was heard and could not be timed — but the operator has been through this clip
+        // by hand, so they have seen what the app could not and the export is theirs to make.
+        if (manual.isNotEmpty()) {
+            Log.i(TAG, "unplaced ${found.unplaced}, but the operator marked this clip by hand")
+            return withManual
+        }
 
         // Something was heard and could not be given a time, so the export stops here.
         //
@@ -134,6 +147,21 @@ class AudioCensor(
             "Heard ${found.unplaced.distinct().joinToString(", ")} but could not place " +
                 "${if (placed.isEmpty()) "any of it" else "all of it"}",
             heardButUnplaced = true
+        )
+    }
+
+    /** Through the same arithmetic the rest uses, so overlapping beeps become one. */
+    private fun mergeAll(
+        windows: List<CensorWindow>,
+        audio: AudioTrackDecoder.DecodedAudio
+    ): List<CensorWindow> {
+        val asWords = windows.map { TimedWord("", it.startUs, it.endUs) }
+        return CensorWindows.build(
+            asWords,
+            asWords.indices.toSet(),
+            audio.durationUs,
+            // Already placed; they need no allowance for a timing that was never guessed.
+            shiftAllowanceUs = 0
         )
     }
 
