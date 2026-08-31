@@ -42,10 +42,14 @@ struct AudioCensor {
     func analyze(
         input: URL,
         tiers: Set<ProfanityLexicon.Tier>,
+        manual: [CensorWindow] = [],
+        byHand: Bool = false,
         onProgress: @escaping (Int) -> Void
     ) async throws -> CensorPlan {
         do {
-            return try await analyzeOrThrow(input: input, tiers: tiers, onProgress: onProgress)
+            return try await analyzeOrThrow(
+                input: input, tiers: tiers, manual: manual, byHand: byHand, onProgress: onProgress
+            )
         } catch let error as CensorFailedError {
             throw error
         } catch is CancellationError {
@@ -58,6 +62,8 @@ struct AudioCensor {
     private func analyzeOrThrow(
         input: URL,
         tiers: Set<ProfanityLexicon.Tier>,
+        manual: [CensorWindow],
+        byHand: Bool,
         onProgress: @escaping (Int) -> Void
     ) async throws -> CensorPlan {
         guard models.allInstalled else {
@@ -71,25 +77,38 @@ struct AudioCensor {
         }) else { return .nothing }
         if audio.frameCount == 0 { return .nothing }
 
-        let recognizer = SpeechRecognizer(models: models)
-        let found = try await recognizer.findProfanity(audio: audio, tiers: tiers) { fraction in
-            onProgress(Self.band(Self.recogniseFrom, Self.recogniseTo, fraction))
+        // By hand means the listening is already done, by someone who can hear what the
+        // recognizer cannot. Running it anyway costs minutes to be told what the operator has
+        // already said — on exactly the clips it failed, which is why they marked them.
+        //
+        // A choice rather than a guess. Deciding this by whether any marks exist would silently
+        // stop looking at the rest of a clip the moment one word was marked on it.
+        let windows: [CensorWindow]
+        if byHand {
+            onProgress(Self.recogniseTo)
+            windows = Self.merge(manual, durationUs: audio.durationUs)
+        } else {
+            let recognizer = SpeechRecognizer(models: models)
+            let found = try await recognizer.findProfanity(audio: audio, tiers: tiers) { fraction in
+                onProgress(Self.band(Self.recogniseFrom, Self.recogniseTo, fraction))
+            }
+            await recognizer.close()
+
+            // A second look at a few seconds around each hit places it to within a frame or two,
+            // so the beep can be tight. Where that could not be confirmed the rough timing
+            // stands, and with it a window wide enough to cover being a second out.
+            let placed = CensorWindows.build(
+                words: found.words,
+                hits: found.hits,
+                durationUs: audio.durationUs,
+                shiftAllowanceUs: found.refined
+                    ? CensorWindows.residualAllowance
+                    : CensorWindows.shiftAllowance
+            )
+            // Marks stand alongside whatever was heard: the operator saw something the recognizer
+            // might not, and both belong in the same export.
+            windows = Self.merge(placed + manual, durationUs: audio.durationUs)
         }
-        await recognizer.close()
-
-        if found.hits.isEmpty { return .nothing }
-
-        // A second look at a few seconds around each hit places it to within a frame or two, so
-        // the beep can be tight. Where that could not be confirmed the rough timing stands, and
-        // with it a window wide enough to cover being a second out.
-        let windows = CensorWindows.build(
-            words: found.words,
-            hits: found.hits,
-            durationUs: audio.durationUs,
-            shiftAllowanceUs: found.refined
-                ? CensorWindows.residualAllowance
-                : CensorWindows.shiftAllowance
-        )
         if windows.isEmpty { return .nothing }
 
         let separator = try VoiceSeparator()
@@ -106,6 +125,21 @@ struct AudioCensor {
             sourceFrameCount: audio.frameCount,
             windows: windows,
             patches: patches
+        )
+    }
+
+    /// Through the same arithmetic the rest uses, so overlapping beeps become one.
+    private static func merge(
+        _ windows: [CensorWindow],
+        durationUs: Int64
+    ) -> [CensorWindow] {
+        let asWords = windows.map { TimedWord(text: "", startUs: $0.startUs, endUs: $0.endUs) }
+        return CensorWindows.build(
+            words: asWords,
+            hits: Set(asWords.indices),
+            durationUs: durationUs,
+            // Already placed; they need no allowance for a timing that was never guessed.
+            shiftAllowanceUs: 0
         )
     }
 

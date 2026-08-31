@@ -34,6 +34,10 @@ struct ConversationPageView: View {
     @State private var censorDownload: Int?
     /// True only while the server is being asked for a fresh link.
     @State private var refreshing = false
+    /// Where the video was when the mark button went down, or nil when nothing is being marked.
+    @State private var markingFrom: Int64?
+    /// The censor tone, played over the video while a marked stretch goes past.
+    @State private var beeps = BeepPlayer()
 
     /// Counts out the press before fast playback starts, and is cancelled if the finger lifts or
     /// wanders first.
@@ -107,7 +111,9 @@ struct ConversationPageView: View {
             centreIndicators
             header
 
-            if controlsShown {
+            // The scrubber stays up while the filter is on. Marking is aiming at a moment, and
+            // a bar that hides itself three seconds in is no use for that.
+            if controlsShown || model.censorAudio {
                 VStack {
                     Spacer()
                     VideoScrubber(
@@ -122,9 +128,47 @@ struct ConversationPageView: View {
                             playerManager.playerHolding(conversation.key)?.seek(to: target)
                             scrubbing = false
                             showControls()
-                        }
+                        },
+                        marks: marks
                     )
                     .padding(.bottom, 92 + chromeInsets.bottom)
+                }
+            }
+
+            if model.censorAudio {
+                VStack {
+                    Spacer()
+                    MarkButton(
+                        marking: markingFrom != nil,
+                        onPress: {
+                            // Where the video is now, not where the finger went down on screen.
+                            markingFrom = positionMS
+                            showControls()
+                        },
+                        onRelease: {
+                            let from = markingFrom
+                            markingFrom = nil
+                            if let from, positionMS > from {
+                                model.addMark(
+                                    conversationKey: conversation.key,
+                                    mediaIndex: currentIndex,
+                                    window: CensorWindow(
+                                        startUs: from * 1_000, endUs: positionMS * 1_000
+                                    )
+                                )
+                            }
+                            showControls()
+                        },
+                        onRemove: {
+                            model.removeMark(
+                                conversationKey: conversation.key,
+                                mediaIndex: currentIndex,
+                                atUs: positionMS * 1_000
+                            )
+                            showControls()
+                        }
+                    )
+                    .padding(.bottom, 140 + chromeInsets.bottom)
                 }
             }
 
@@ -133,6 +177,11 @@ struct ConversationPageView: View {
         .clipped()
         .task(id: TaskKey(active: isActivePage, url: currentProxyURL)) { await pollPosition() }
         .task(id: controlsToken) { await hideControlsLater() }
+        .onChange(of: insideMark) { _, inside in
+            playerManager.setDucked(key: conversation.key, ducked: inside)
+            if inside { beeps.start() } else { beeps.stop() }
+        }
+        .onDisappear { beeps.stop() }
         .onChange(of: paused) { _, value in
             guard isActivePage else { return }
             playerManager.setPaused(key: conversation.key, paused: value)
@@ -166,6 +215,25 @@ struct ConversationPageView: View {
     }
 
     // MARK: - Video
+
+    /// Every stretch marked by hand on the video on screen.
+    private var marks: [CensorWindow] {
+        // markRevision is read so the view redraws when a mark is added or taken off; the marks
+        // themselves live in preferences rather than in state.
+        _ = model.markRevision
+        return model.manualMarks(
+            conversationKey: conversation.key, mediaIndex: currentIndex
+        )
+    }
+
+    /// Whether the playhead is inside something marked — including the mark being made right now,
+    /// which is the moment the operator most wants to hear.
+    private var insideMark: Bool {
+        guard model.censorAudio, isActivePage, !paused else { return false }
+        if markingFrom != nil { return true }
+        let now = positionMS * 1_000
+        return marks.contains { now >= $0.startUs && now <= $0.endUs }
+    }
 
     private var videoPager: some View {
         ScrollView(.horizontal) {
@@ -385,11 +453,30 @@ struct ConversationPageView: View {
                     .frame(width: Self.toggleTouch, height: Self.toggleTouch)
                     .accessibilityIdentifier("censorDownload")
             } else {
-                toggle(
-                    icon: model.censorAudio ? "speaker.slash.fill" : "speaker.wave.2",
-                    on: model.censorAudio,
-                    action: toggleCensor
-                )
+                // Tap switches the filter; holding switches whether it listens to the video or
+                // only beeps what was marked by hand — the same shape as the plate toggle,
+                // because it is the same kind of choice: a knob to set, not one to reach for.
+                ZStack(alignment: .bottomTrailing) {
+                    toggle(
+                        icon: model.censorAudio ? "speaker.slash.fill" : "speaker.wave.2",
+                        on: model.censorAudio,
+                        action: toggleCensor
+                    )
+                    if model.censorAudio && model.censorByHand {
+                        // A hand on the corner for the by-hand setting, nothing for automatic —
+                        // so the icon says which of the two the long press left it on.
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .padding(.trailing, 4)
+                            .padding(.bottom, 6)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .onLongPressGesture(minimumDuration: Self.modeHold) {
+                    model.setCensorByHand(!model.censorByHand)
+                    model.toast = model.censorByHand ? Strings.censorByHand : Strings.censorAuto
+                }
                 .accessibilityIdentifier("toggleCensor")
             }
 
@@ -654,6 +741,9 @@ struct ConversationPageView: View {
 
     /// The glyph size shared by every filter toggle, and the square each one sits in.
     private static let toggleGlyph: CGFloat = 20
+    /// Long enough not to fire on a tap that switches the filter, short enough to find.
+    private static let modeHold = 0.5
+
     private static let toggleTouch: CGFloat = 40
 
     /// How long the controls stay up once nothing is happening.
@@ -753,6 +843,50 @@ private struct PlaybackRetry: View {
                 }
                 .accessibilityIdentifier("videoRetry")
             }
+        }
+    }
+}
+
+/// Hold while the swearing plays; let go when it stops.
+///
+/// The obvious alternative was dragging a range along the scrubber, which means finding a moment
+/// you have already heard go past. Holding is how the operator experiences the problem: the word
+/// arrives, the thumb goes down, the word ends, the thumb comes up.
+///
+/// Deliberately not the video surface, which already means run-at-triple-speed while held.
+private struct MarkButton: View {
+
+    let marking: Bool
+    let onPress: () -> Void
+    let onRelease: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(marking ? Strings.markHolding : Strings.markHint)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(
+                    marking ? VideoScrubber.markColour : Color.black.opacity(0.55),
+                    in: Capsule()
+                )
+                // Whether the finger lifted or slid off, the mark ends here — one left open would
+                // keep growing for the rest of the video.
+                .onLongPressGesture(
+                    minimumDuration: .infinity,
+                    perform: {},
+                    onPressingChanged: { pressing in
+                        if pressing { onPress() } else { onRelease() }
+                    }
+                )
+                .accessibilityIdentifier("markButton")
+
+            Button(action: onRemove) {
+                Text(Strings.markRemove).foregroundStyle(.white.opacity(0.8))
+            }
+            .accessibilityIdentifier("markRemove")
         }
     }
 }

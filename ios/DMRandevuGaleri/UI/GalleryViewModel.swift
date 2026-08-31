@@ -32,10 +32,12 @@ final class GalleryViewModel {
     private(set) var fastPlates: Bool
     private(set) var watermark: Bool
     private(set) var censorAudio: Bool
+    private(set) var censorByHand: Bool
 
     private let igId: String
     private let repository = ServiceLocator.repository!
     private let settings = ServiceLocator.settings!
+    private let marks = ServiceLocator.manualMarks
 
     private var pending: (conversation: Conversation, job: Task<Void, Never>)?
     private var lastSettledKey: String?
@@ -50,6 +52,7 @@ final class GalleryViewModel {
         fastPlates = settings.fastPlates
         watermark = settings.watermark
         censorAudio = settings.censorAudio
+        censorByHand = settings.censorByHand
     }
 
     // MARK: - Paging
@@ -258,6 +261,32 @@ final class GalleryViewModel {
         censorAudio = enabled
     }
 
+    func setCensorByHand(_ byHand: Bool) {
+        settings.censorByHand = byHand
+        censorByHand = byHand
+    }
+
+    /// Every stretch marked by hand on one video.
+    func manualMarks(conversationKey: String, mediaIndex: Int) -> [CensorWindow] {
+        marks.forMedia(conversationKey: conversationKey, mediaIndex: mediaIndex)
+    }
+
+    func addMark(conversationKey: String, mediaIndex: Int, window: CensorWindow) {
+        marks.add(conversationKey: conversationKey, mediaIndex: mediaIndex, window: window)
+        markRevision += 1
+    }
+
+    func removeMark(conversationKey: String, mediaIndex: Int, atUs: Int64) {
+        marks.removeAt(conversationKey: conversationKey, mediaIndex: mediaIndex, atUs: atUs)
+        markRevision += 1
+    }
+
+    /// Bumped on every change so the page redraws.
+    ///
+    /// The marks live in preferences rather than in state, because losing an afternoon of them to
+    /// a swipe would be worse than the extra bookkeeping.
+    private(set) var markRevision = 0
+
     /// The handle to burn in, or nil when the watermark is off. Drives preview and export alike.
     func watermarkHandle() -> String? {
         let handle = settings.igUsername
@@ -265,14 +294,21 @@ final class GalleryViewModel {
     }
 
     /// What the export buttons should ask for, given how the toggles are set.
-    func exportOptions() -> ExportOptions {
+    func exportOptions(
+        conversationKey: String? = nil,
+        mediaIndex: Int = 0
+    ) -> ExportOptions {
         ExportOptions(
             blurFaces: blurFaces,
             blurPlates: blurPlates,
             fastPlates: fastPlates,
             watermarkHandle: watermarkHandle(),
             censorAudio: censorAudio,
-            censorInsults: settings.censorInsults
+            censorInsults: settings.censorInsults,
+            censorByHand: censorByHand,
+            manualWindows: conversationKey.map {
+                marks.forMedia(conversationKey: $0, mediaIndex: mediaIndex)
+            } ?? []
         )
     }
 

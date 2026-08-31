@@ -69,6 +69,15 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Key.censorAudio) }
     }
 
+    /// Whether the censor listens to the video or only beeps what was marked by hand.
+    ///
+    /// Automatic on a clip the recognizer manages; by hand on the ones it does not, where running
+    /// it costs minutes to be told what the operator has already said.
+    var censorByHand: Bool {
+        get { defaults.bool(forKey: Key.censorByHand) }
+        set { defaults.set(newValue, forKey: Key.censorByHand) }
+    }
+
     /// Beep milder insults too, not only outright profanity. Off by default — "manyak" fired on a
     /// clip where nobody swore.
     var censorInsults: Bool {
@@ -86,5 +95,6 @@ final class SettingsStore {
         static let watermark = "watermark"
         static let censorAudio = "censor_audio"
         static let censorInsults = "censor_insults"
+        static let censorByHand = "censor_by_hand"
     }
 }

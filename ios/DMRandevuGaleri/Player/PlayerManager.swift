@@ -39,6 +39,9 @@ final class PlayerManager {
 
     private static let poolSize = 2
 
+    /// How much of the video is left audible under the live censor tone.
+    private static let duckedVolume: Float = 0.12
+
     private let players: [AVPlayer]
     private let cookies: () -> [HTTPCookie]
 
@@ -109,6 +112,15 @@ final class PlayerManager {
     }
 
     /// Plays `key` at `speed` times normal, for press-and-hold to skim through a video.
+    /// Ducks the video while a marked stretch plays, so the censor tone over it can be heard.
+    ///
+    /// Not muted outright: leaving a little through keeps the video from feeling as though it has
+    /// dropped out, and the operator is judging whether the beep covers the word, not listening
+    /// to the word.
+    func setDucked(key: String, ducked: Bool) {
+        playerHolding(key)?.volume = ducked ? Self.duckedVolume : 1
+    }
+
     func setSpeed(key: String, speed: Float) {
         guard let player = playerHolding(key) else { return }
         // `defaultRate` is what a later `play()` picks up; `rate` only moves a video already

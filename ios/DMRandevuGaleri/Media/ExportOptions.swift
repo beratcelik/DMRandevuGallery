@@ -15,6 +15,10 @@ struct ExportOptions: Equatable {
     var censorAudio = false
     /// Whether milder insults are beeped too, or only outright profanity.
     var censorInsults = false
+    /// Beep only what was marked by hand, without listening to the video at all.
+    var censorByHand = false
+    /// Stretches the operator marked by hand, beeped whatever the recognizer makes of them.
+    var manualWindows: [CensorWindow] = []
 
     var changesNothing: Bool {
         !blurFaces && !blurPlates && watermarkHandle == nil && !censorAudio

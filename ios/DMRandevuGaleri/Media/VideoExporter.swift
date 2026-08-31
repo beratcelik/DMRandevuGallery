@@ -89,7 +89,12 @@ final class VideoExporter {
             var tiers: Set<ProfanityLexicon.Tier> = [.profanity]
             if options.censorInsults { tiers.insert(.insult) }
             plan = try await wrapping("Censoring the audio failed") {
-                try await audioCensor.analyze(input: input, tiers: tiers) { percent in
+                try await audioCensor.analyze(
+                    input: input,
+                    tiers: tiers,
+                    manual: options.manualWindows,
+                    byHand: options.censorByHand
+                ) { percent in
                     onProgress(scanShare + percent * (censorFloor - scanShare) / 100)
                 }
             }

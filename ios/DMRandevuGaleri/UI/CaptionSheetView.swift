@@ -143,7 +143,14 @@ struct CaptionSheetView: View {
                             ? settings.igUsername
                             : nil,
                         censorAudio: settings.censorAudio,
-                        censorInsults: settings.censorInsults
+                        censorInsults: settings.censorInsults,
+                        censorByHand: settings.censorByHand,
+                        // The sheet has no view model, so the marks are read the same way the
+                        // toggles are — straight from the store.
+                        manualWindows: ServiceLocator.manualMarks.forMedia(
+                            conversationKey: conversation.key,
+                            mediaIndex: max(conversation.urls.firstIndex(of: rawMediaURL) ?? 0, 0)
+                        )
                     )
                 ) { shareProgress = $0 }
                 // Instagram accepts no caption on any hand-off, so it travels via the clipboard —

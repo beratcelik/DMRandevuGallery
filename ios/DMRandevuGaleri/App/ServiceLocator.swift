@@ -12,6 +12,9 @@ enum ServiceLocator {
     /// Downloads and verifies the speech models the censor filter needs.
     static let censorModels = CensorModels()
 
+    /// Stretches the operator marked by hand, for clips the recognizer cannot place.
+    static let manualMarks = ManualMarks()
+
     private(set) static var exporter: VideoExporter!
     private(set) static var downloader: Downloader!
 

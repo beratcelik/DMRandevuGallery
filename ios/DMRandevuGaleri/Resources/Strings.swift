@@ -59,6 +59,12 @@ enum Strings {
     static let watermarkOn = "Filigran açık — hesap adı videonun üzerinde gezinecek"
     static let watermarkOff = "Filigran kapalı"
     static let censorAudioToggle = "Küfür filtresi"
+    static let censorAuto = "Küfür filtresi: otomatik — konuşma taranıp küfürler bulunacak"
+    static let censorByHand =
+        "Küfür filtresi: elle — sadece sizin işaretledikleriniz bipleniyor, video taranmıyor"
+    static let markHint = "Küfrü işaretle (basılı tut)"
+    static let markHolding = "İşaretleniyor…"
+    static let markRemove = "Buradakini sil"
     static let censorAudioOn =
         "Küfür filtresi açık — küfürler bip sesiyle kapatılacak, arka plandaki ses devam edecek"
     static let censorAudioOff = "Küfür filtresi kapalı"
