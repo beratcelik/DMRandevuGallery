@@ -77,11 +77,20 @@ class AudioCensor(
 
         if (audio.frameCount == 0L) return CensorPlan.nothing()
 
-        val windows = SpeechRecognizer(models).use { recognizer ->
-            val found = recognizer.findProfanity(audio, tiers) { fraction ->
-                onProgress(band(RECOGNISE_FROM, RECOGNISE_TO, fraction))
+        // Marked by hand means the listening is already done, and done by someone who can hear
+        // what the recognizer cannot. Running it anyway costs three and a half minutes to be told
+        // what the operator has already said.
+        val windows = if (manual.isNotEmpty()) {
+            Log.i(TAG, "${manual.size} marked stretches; not running recognition")
+            onProgress(RECOGNISE_TO)
+            mergeAll(manual, audio)
+        } else {
+            SpeechRecognizer(models).use { recognizer ->
+                val found = recognizer.findProfanity(audio, tiers) { fraction ->
+                    onProgress(band(RECOGNISE_FROM, RECOGNISE_TO, fraction))
+                }
+                windowsFor(audio, found)
             }
-            windowsFor(audio, found, manual)
         }
         if (windows.isEmpty()) return CensorPlan.nothing()
 
@@ -106,8 +115,7 @@ class AudioCensor(
      */
     private fun windowsFor(
         audio: AudioTrackDecoder.DecodedAudio,
-        found: SpeechRecognizer.Result,
-        manual: List<CensorWindow>
+        found: SpeechRecognizer.Result
     ): List<CensorWindow> {
         // A second look at a few seconds around each hit places it to within a frame or two, so
         // the beep can be tight. Where that could not be confirmed the rough timing stands, and
@@ -120,17 +128,7 @@ class AudioCensor(
         val placed = CensorWindows.build(
             found.words, found.hits, audio.durationUs, shiftAllowanceUs = allowance
         )
-        // Marked stretches are beeped as given: the operator heard them, which is a better
-        // authority than the recognizer, and they are already where they belong.
-        val withManual = if (manual.isEmpty()) placed else mergeAll(placed + manual, audio)
-        if (found.unplaced.isEmpty()) return withManual
-
-        // Swearing was heard and could not be timed — but the operator has been through this clip
-        // by hand, so they have seen what the app could not and the export is theirs to make.
-        if (manual.isNotEmpty()) {
-            Log.i(TAG, "unplaced ${found.unplaced}, but the operator marked this clip by hand")
-            return withManual
-        }
+        if (found.unplaced.isEmpty()) return placed
 
         // Something was heard and could not be given a time, so the export stops here.
         //

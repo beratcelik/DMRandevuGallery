@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -66,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.dmrandevu.gallery.R
+import com.dmrandevu.gallery.media.censor.BeepPlayer
 import com.dmrandevu.gallery.media.censor.CensorWindow
 import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
@@ -128,6 +130,11 @@ fun ConversationPage(
     /// Where the video was when the mark button went down, or null when nothing is being marked.
     var markingFrom by remember { mutableStateOf<Long?>(null) }
     val markRevision = viewModel.markRevision
+
+    // The censor tone, played over the video while a marked stretch goes past so the operator can
+    // hear what they marked rather than reading a red bar and hoping.
+    val beeps = remember { BeepPlayer() }
+    DisposableEffect(Unit) { onDispose { beeps.stop() } }
     // Exports share one cache directory and one progress readout, so they have to run one at a
     // time — a second one starting would wipe the first one's working files out from under it.
     val exporting = downloading || sharingStory || sharingReels
@@ -568,6 +575,20 @@ fun ConversationPage(
                         .padding(bottom = 140.dp)
                 )
             }
+        }
+
+        // Whether the playhead is inside something marked — including the mark being made right
+        // now, which is the moment the operator most wants to hear.
+        val marked = remember(markRevision, conversation.key, mediaPager.currentPage) {
+            viewModel.manualMarks(conversation.key, mediaPager.currentPage)
+        }
+        val inMark = censorAudio && isActivePage && !paused && (
+            markingFrom != null ||
+                marked.any { positionMs * 1_000 in it.startUs..it.endUs }
+            )
+        LaunchedEffect(inMark, conversation.key) {
+            playerManager.setDucked(conversation.key, inMark)
+            if (inMark) beeps.start() else beeps.stop()
         }
 
         // Dots + actions.

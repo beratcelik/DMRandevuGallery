@@ -108,6 +108,17 @@ class PlayerManager(
     }
 
     /** Plays [key] at [speed] times normal, for press-and-hold to skim through a video. */
+    /**
+     * Ducks the video while a marked stretch plays, so the censor tone over it can be heard.
+     *
+     * Not muted outright: leaving a little through keeps the video from feeling as though it has
+     * dropped out, and the operator is judging whether the beep covers the word, not listening to
+     * the word.
+     */
+    fun setDucked(key: String, ducked: Boolean) {
+        playerHolding(key)?.volume = if (ducked) DUCKED_VOLUME else 1f
+    }
+
     fun setSpeed(key: String, speed: Float) {
         playerHolding(key)?.setPlaybackSpeed(speed)
     }
@@ -234,6 +245,9 @@ class PlayerManager(
 
     private companion object {
         const val POOL_SIZE = 2
+
+        /** How much of the video is left audible under the live censor tone. */
+        const val DUCKED_VOLUME = 0.12f
 
         /** Cause chains are short; the bound is only there so a self-referencing one cannot spin. */
         const val MAX_CAUSE_DEPTH = 8
