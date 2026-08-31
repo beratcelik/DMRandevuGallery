@@ -580,7 +580,14 @@ fun ConversationPage(
                             viewModel.reportSessionLost()
                             R.string.download_failed
                         } catch (e: VideoExporter.ExportFailedException) {
-                            R.string.export_failed
+                            // Swearing heard but not placed is a different thing from a broken
+                            // export: the video really does need handling, and saying so is the
+                            // difference between the operator checking it and assuming a glitch.
+                            if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
+                                R.string.censor_unplaced
+                            } else {
+                                R.string.export_failed
+                            }
                         } finally {
                             downloading = false
                             exportProgress = null
@@ -613,7 +620,15 @@ fun ConversationPage(
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
                         } catch (e: VideoExporter.ExportFailedException) {
-                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                context,
+                                if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
+                                    R.string.censor_unplaced
+                                } else {
+                                    R.string.export_failed
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
@@ -665,7 +680,15 @@ fun ConversationPage(
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
                         } catch (e: VideoExporter.ExportFailedException) {
-                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                context,
+                                if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
+                                    R.string.censor_unplaced
+                                } else {
+                                    R.string.export_failed
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {

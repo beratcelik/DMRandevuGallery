@@ -40,7 +40,15 @@ class SpeechRecognizer(
     data class Result(
         val words: List<TimedWord>,
         val hits: Set<Int>,
-        val refined: Boolean = false
+        val refined: Boolean = false,
+        /**
+         * Swearing a detection pass heard but that could not be given a time.
+         *
+         * Never silently dropped. The timing pass sometimes hears almost nothing on a loud clip,
+         * and then there is no word for a verdict to attach to — which used to mean the app knew
+         * the video had swearing in it and handed it over uncensored anyway.
+         */
+        val unplaced: List<String> = emptyList()
     )
 
     private var loaded: WhisperContext? = null
@@ -76,18 +84,30 @@ class SpeechRecognizer(
 
         val hits = lexicon.hits(words.map { it.text }, tiers).toMutableSet()
         val timingText = words.map { it.text }
+        val unplaced = mutableListOf<String>()
 
         // The larger model is three times slower and is only worth its minutes in the case the
         // spike actually found it useful: base occasionally goes deaf on a clip and returns
         // nothing but "[MÜZİK ÇALIYOR]" where small transcribes it in full. When base has clearly
         // heard the speech, small adds four minutes to find the same words — and on the one clip
         // with real swearing it was small that sanitised it, not base.
-        val deaf = words.size < DEAF_THRESHOLD
+        // Judged by how much of the clip came back as words, not by how many there are. An
+        // absolute count cannot tell a short clip from a deaf one: eleven words is plenty for
+        // five seconds and almost nothing for sixty-five, and on a sixty-five second clip of
+        // shouting that is exactly what base returned — eleven words, over the old threshold of
+        // eight, so the larger model never ran and four separate swear words went out uncensored.
+        val seconds = (audio.durationUs / 1_000_000.0).coerceAtLeast(1.0)
+        val rate = words.size / seconds
+        val deaf = rate < DEAF_WORDS_PER_SECOND
         val remaining = BASE_PASSES.filterNot { it.carriesTiming } +
             if (deaf) SMALL_PASSES else emptyList()
         if (deaf) {
             expected += SMALL_PASSES.size
-            Log.i(TAG, "only ${words.size} words from base; escalating to the larger model")
+            Log.i(
+                TAG,
+                "base heard ${words.size} words in ${"%.0f".format(seconds)}s " +
+                    "(${"%.2f".format(rate)}/s); escalating to the larger model"
+            )
         }
 
         for (pass in remaining) {
@@ -97,10 +117,17 @@ class SpeechRecognizer(
             } catch (e: WhisperContext.TranscriptionFailedException) {
                 throw RecognitionFailedException("Recognition failed", e)
             }
-            for (pair in WordAlignment.align(heard, timingText)) {
+            val paired = WordAlignment.align(heard, timingText)
+            for (pair in paired) {
                 if (lexicon.isProfane(heard[pair.detectionIndex], tiers)) {
                     hits.add(pair.timingIndex)
                 }
+            }
+            // Anything this pass accused that alignment could not pair off. The timing pass never
+            // heard it, so it has no time and cannot be beeped — but it was still heard.
+            val placed = paired.map { it.detectionIndex }.toSet()
+            heard.forEachIndexed { index, word ->
+                if (index !in placed && lexicon.isProfane(word, tiers)) unplaced.add(word)
             }
             Log.i(
                 TAG,
@@ -109,7 +136,7 @@ class SpeechRecognizer(
             )
             onProgress(step())
         }
-        if (hits.isEmpty()) return Result(words, hits)
+        if (hits.isEmpty()) return Result(words, hits, unplaced = unplaced)
 
         // The words are right but the times are not; a short second look fixes that. Done here,
         // while the model this needs is still the one that is loaded.
@@ -139,7 +166,7 @@ class SpeechRecognizer(
             retimed[run.last] = retimed[run.last].copy(endUs = refined.endUs)
         }
         Log.i(TAG, "refined ${refinements.count { it.value != null }} of ${refinements.size} runs")
-        return Result(retimed, hits, refined = everyRunRefined)
+        return Result(retimed, hits, refined = everyRunRefined, unplaced = unplaced)
     }
 
     /** The pass that owns the clock: a segment per token, reassembled into words. */
@@ -239,10 +266,13 @@ class SpeechRecognizer(
         val WHITESPACE = Regex("\\s+")
 
         /**
-         * Below this many words, base is taken to have missed the speech rather than to have
-         * heard a quiet clip, and the larger model is brought in.
+         * Below this many words a second, base is taken to have missed the speech rather than to
+         * have heard a quiet clip, and the larger model is brought in.
+         *
+         * The clip this was tuned on runs at 1.34 words a second. The one that slipped through
+         * managed 0.17.
          */
-        const val DEAF_THRESHOLD = 8
+        const val DEAF_WORDS_PER_SECOND = 0.5
 
         /**
          * Base carries the clock: it is the quicker of the two and the one measured to transcribe

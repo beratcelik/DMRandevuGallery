@@ -58,6 +58,7 @@
     <string name="censor_models_downloading">Küfür filtresi hazırlanıyor — %%%1$d</string>
     <string name="censor_models_ready">Küfür filtresi hazır</string>
     <string name="censor_models_failed">Küfür filtresi indirilemedi — bağlantıyı kontrol edip tekrar deneyin</string>
+    <string name="censor_unplaced">Küfür duyuldu ama yeri bulunamadı — video aktarılmadı. Filtresiz aktarmak için filtreyi kapatın.</string>
     <string name="export_failed">Video işlenemedi — aktarılmadı. Ham haliyle aktarmak için filtreleri kapatın.</string>
 
     <!-- Playback -->

@@ -165,6 +165,13 @@ class VideoExporter(
     }
 
     /**
+     * Whether this failure is the recognizer hearing swearing it could not place, rather than
+     * anything being broken. The two need different words in front of the operator.
+     */
+    fun isUnplacedProfanity(failure: ExportFailedException): Boolean =
+        (failure.cause as? AudioCensor.CensorFailedException)?.heardButUnplaced == true
+
+    /**
      * Runs the Transformer export. Every touch of it — construction, start, progress, cancel —
      * has to happen on the main looper, which is why the whole body sits in [Dispatchers.Main].
      */

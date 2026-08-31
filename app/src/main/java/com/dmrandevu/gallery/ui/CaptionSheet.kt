@@ -193,7 +193,15 @@ fun CaptionSheet(
                             onSessionLost()
                             onDismiss()
                         } catch (e: VideoExporter.ExportFailedException) {
-                            Toast.makeText(context, R.string.export_failed, Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                context,
+                                if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
+                                    R.string.censor_unplaced
+                                } else {
+                                    R.string.export_failed
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
