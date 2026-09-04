@@ -8,6 +8,8 @@
     <string name="login_username">Yönetici kullanıcı adı</string>
     <string name="login_password">Şifre</string>
     <string name="login_account">Instagram hesabı</string>
+    <string name="login_ihbar_server">İhbar sunucusu</string>
+    <string name="login_ihbar_token">İhbar cihaz belirteci (isteğe bağlı)</string>
     <string name="login_submit">Giriş Yap</string>
     <string name="login_failed">Giriş başarısız. Bilgileri kontrol edin.</string>
     <string name="login_account_not_found">Instagram hesabı bulunamadı</string>
@@ -66,6 +68,25 @@
     <string name="mark_remove">Buradakini sil</string>
     <string name="censor_unplaced">Küfür duyuldu ama yeri bulunamadı — video aktarılmadı. Filtresiz aktarmak için filtreyi kapatın.</string>
     <string name="export_failed">Video işlenemedi — aktarılmadı. Ham haliyle aktarmak için filtreleri kapatın.</string>
+
+    <!-- Trafik İhbar köprüsü -->
+    <string name="ihbar_mark">İhlal olarak işaretle</string>
+    <string name="ihbar_marking">Gönderiliyor…</string>
+    <string name="ihbar_marked">İhlal olarak işaretlendi</string>
+    <string name="ihbar_approved">İhbar onaylandı</string>
+    <string name="ihbar_needs_info">İşaretlendi — bilgi eksik</string>
+    <string name="ihbar_blocked">İşaretlendi — gönderilemiyor</string>
+    <string name="ihbar_pending">İhbar kaydı hazır değil</string>
+    <string name="ihbar_error">İşaretlenemedi — dokunup tekrar deneyin</string>
+    <string name="ihbar_network_error">İhbar sunucusuna ulaşılamadı</string>
+    <string name="ihbar_no_token">İhbar belirteci yok</string>
+    <string name="ihbar_no_token_detail">Dokunun ve cihaz belirtecini yapıştırın</string>
+    <string name="ihbar_missing_fields">%1$s eksik</string>
+    <string name="ihbar_token_title">İhbar cihaz belirteci</string>
+    <string name="ihbar_token_explain">Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli.</string>
+    <string name="ihbar_token_hint">tid_…</string>
+    <string name="ihbar_token_save">Kaydet</string>
+    <string name="cancel">Vazgeç</string>
 
     <!-- Playback -->
     <string name="playback_speed">%1$d×</string>

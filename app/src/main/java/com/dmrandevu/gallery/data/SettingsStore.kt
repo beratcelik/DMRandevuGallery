@@ -62,6 +62,29 @@ class SettingsStore(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_CENSOR_INSULTS, DEFAULT_CENSOR_INSULTS)
         set(value) = prefs.edit { putBoolean(KEY_CENSOR_INSULTS, value) }
 
+    /**
+     * Trafik İhbar sunucusunun adresi.
+     *
+     * DMRandevu'dan AYRI bir sistem ve ayrı bir sunucu; [baseUrl] ile
+     * karıştırılmamalı. Ayrı durmasının sebebi yalnızca düzen değil: galeri
+     * sunucusu değiştiğinde (yerel bir kopyaya bakarken) ihbar sunucusunun
+     * onunla birlikte kaymaması gerekiyor.
+     */
+    var ihbarBaseUrl: String
+        get() = prefs.getString(KEY_IHBAR_BASE_URL, DEFAULT_IHBAR_BASE_URL)!!
+        set(value) = prefs.edit { putString(KEY_IHBAR_BASE_URL, value.trim().trimEnd('/')) }
+
+    /**
+     * İhbar sunucusunun cihaz belirteci ("tid_…").
+     *
+     * Yönetici konsolunda bir kez üretiliyor ve bir daha gösterilmiyor, o
+     * yüzden buraya bir kez yapıştırılıp saklanıyor. Boşken ihlal düğmesi ağa
+     * hiç çıkmıyor ve bunu kullanıcıya söylüyor.
+     */
+    var ihbarToken: String
+        get() = prefs.getString(KEY_IHBAR_TOKEN, "")!!
+        set(value) = prefs.edit { putString(KEY_IHBAR_TOKEN, value.trim()) }
+
     /** Drift the account handle across every exported video, so a repost still shows whose it is. */
     var watermark: Boolean
         get() = prefs.getBoolean(KEY_WATERMARK, DEFAULT_WATERMARK)
@@ -69,6 +92,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
 
     companion object {
         const val DEFAULT_BASE_URL = "https://dmrandevu.com"
+        const val DEFAULT_IHBAR_BASE_URL = "https://ihbar.lega.digital"
         const val DEFAULT_IG_ACCOUNT = "trafik_cezasi"
         const val DEFAULT_BLUR_FACES = false
         const val DEFAULT_BLUR_PLATES = false
@@ -78,6 +102,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val DEFAULT_CENSOR_INSULTS = false
         const val DEFAULT_CENSOR_BY_HAND = false
         private const val KEY_BASE_URL = "base_url"
+        private const val KEY_IHBAR_BASE_URL = "ihbar_base_url"
+        private const val KEY_IHBAR_TOKEN = "ihbar_token"
         private const val KEY_ADMIN = "admin_username"
         private const val KEY_IG = "ig_username"
         private const val KEY_BLUR_FACES = "blur_faces"

@@ -16,6 +16,10 @@ final class LoginViewModel {
     var username: String
     var password: String = ""
     var igUsername: String
+    /// Trafik İhbar sunucusu — DMRandevu'dan ayrı bir sistem, ayrı bir adres.
+    var ihbarBaseURL: String
+    /// İhbar cihaz belirteci. Boş bırakılabilir; ihlal düğmesi o zaman çalışmaz.
+    var ihbarToken: String
 
     private(set) var probing = true
     private(set) var submitting = false
@@ -31,6 +35,11 @@ final class LoginViewModel {
         baseURL = settings.baseURL
         username = settings.adminUsername
         igUsername = settings.igUsername
+        ihbarBaseURL = settings.ihbarBaseURL
+        // Saklanan belirteç alana geri konuyor: boş açsaydı, sırf başka bir ayarı
+        // değiştirmek için yapılan bir girişte kaydetme adımı çalışan belirteci
+        // silerdi.
+        ihbarToken = settings.ihbarToken
     }
 
     func clearError() {
@@ -72,6 +81,8 @@ final class LoginViewModel {
             }
             settings.adminUsername = username
             settings.igUsername = igUsername
+            settings.ihbarBaseURL = ihbarBaseURL
+            settings.ihbarToken = ihbarToken
             authenticated = try await repository.resolveAccount(igUsername).igId
         } catch is AccountNotFoundError {
             submitting = false

@@ -9,10 +9,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
+import com.dmrandevu.gallery.data.IhbarException
+import com.dmrandevu.gallery.data.IhbarMark
+import com.dmrandevu.gallery.data.IhbarPhase
+import com.dmrandevu.gallery.data.IhbarRepository
+import com.dmrandevu.gallery.data.IhbarTokenMissingException
 import com.dmrandevu.gallery.data.UnauthorizedException
+import com.dmrandevu.gallery.data.ihbarItemFor
+import com.dmrandevu.gallery.data.toMark
 import com.dmrandevu.gallery.media.ExportOptions
 import com.dmrandevu.gallery.media.censor.CensorWindow
 import com.dmrandevu.gallery.player.PlaybackFailure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -29,9 +37,16 @@ sealed interface GalleryEvent {
 
 private data class PendingDelete(val conversation: Conversation, val job: Job)
 
+/** Sunucuya henüz sorulmamış düğme: nötr ve basılabilir. */
+private val UNKNOWN_MARK = IhbarMark(IhbarPhase.UNKNOWN)
+
+/** Belirteç girilmemiş: soluk, ve dokununca ne yapılması gerektiğini anlatıyor. */
+private val NO_TOKEN_MARK = IhbarMark(IhbarPhase.NO_TOKEN)
+
 class GalleryViewModel(private val igId: String) : ViewModel() {
 
     private val repo = ServiceLocator.repository
+    private val ihbar = ServiceLocator.ihbarRepository
     private val settings = ServiceLocator.settings
     private val marks = ServiceLocator.manualMarks
 
@@ -39,6 +54,24 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     /** Proxy urls that failed to play, and what kind of failure each one hit. */
     val failures = mutableStateMapOf<String, PlaybackFailure>()
+
+    /**
+     * Video başına ihlal düğmesinin durumu; anahtarı konuşma + video sırası.
+     *
+     * NEDEN SAYFADA DEĞİL DE BURADA: dikey çağrıcı yalnızca komşu sayfaları
+     * derli tutuyor, iki konuşma aşağı kaydırıp geri dönmek sayfayı sıfırdan
+     * oluşturuyor. Durum sayfada dursaydı yeşile dönmüş bir düğme her dönüşte
+     * nötre döner ve sahip aynı videoyu ikinci kez işaretlerdi.
+     *
+     * NEDEN DİSKE YAZILMIYOR: tek doğru kaynak sunucu. Saklanan bir "yeşil",
+     * yönetici konsolunda geri çekilen bir ihbarda yalan söylemeye devam
+     * ederdi; uygulama yeniden açıldığında sayfa zaten tek istekte boyanıyor.
+     *
+     * Diğer durum alanlarıyla birlikte yukarıda duruyor, kullanıldığı bölümde
+     * değil: ilk sayfa init bloğundan yükleniyor ve bu harita o akış
+     * başlamadan önce var olmak zorunda.
+     */
+    private val ihbarMarks = mutableStateMapOf<String, IhbarMark>()
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
@@ -111,6 +144,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                     val known = items.mapTo(HashSet()) { it.key }
                     val fresh = page.items.filter { it.key !in known && it.urls.isNotEmpty() }
                     items.addAll(fresh)
+                    // Sayfa geldiği anda, sahip oraya kaydırmadan önce boyanıyor:
+                    // düğmenin rengi videoyla birlikte hazır olmalı.
+                    refreshIhbar(fresh)
                     _hasMore.value = page.hasMore
                     // The server count already reflects everything committed so far.
                     _remaining.value = page.total
@@ -231,6 +267,120 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         if (pending?.conversation?.key == conversation.key) pending = null
         if (items.size <= PREFETCH_DISTANCE) loadMore()
     }
+
+    // ── ihbar köprüsü ─────────────────────────────────────────────────────────────
+
+    /** Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan. */
+    fun ihbarMark(conversationKey: String, mediaIndex: Int): IhbarMark =
+        ihbarMarks[ihbarKey(conversationKey, mediaIndex)]
+            ?: if (ihbar.hasToken) UNKNOWN_MARK else NO_TOKEN_MARK
+
+    /**
+     * Bir sayfa dolusu videonun durumunu TEK istekte alır ve düğmeleri boyar.
+     *
+     * NEDEN VİDEO BAŞINA DEĞİL: sayfa başına beş konuşma ve her birinde birkaç
+     * video var. Video başına istek, her kaydırmada onlarca istek demek olurdu;
+     * mobil bağlantıda gözle görülür gecikme ve sunucudaki oran sınırının hiçbir
+     * iş yapmadan dolması.
+     */
+    private fun refreshIhbar(conversations: List<Conversation>) {
+        if (!ihbar.hasToken) return
+        val targets = conversations.flatMap { conversation ->
+            conversation.urls.indices.map { index ->
+                ihbarKey(conversation.key, index) to ihbarItemFor(conversation, index)
+            }
+        }
+        if (targets.isEmpty()) return
+
+        viewModelScope.launch {
+            for (chunk in targets.chunked(IhbarRepository.MAX_ITEMS)) {
+                val answers = try {
+                    ihbar.status(chunk.map { it.second })
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: IhbarException) {
+                    // Sunucu isteği anladı ve reddetti; pratikte bu "belirteç
+                    // geçersiz" demek. Yutmak, sahibin bozuk bir belirteçle
+                    // düğmeye basıp durmasına yol açardı — sebebi düğmede yazsın.
+                    chunk.forEach { (key, _) ->
+                        ihbarMarks[key] = IhbarMark(IhbarPhase.ERROR, e.message)
+                    }
+                    return@launch
+                } catch (e: Exception) {
+                    // Ağ yok ya da sunucu kapalı: düğmeler "bilinmiyor" kalıyor ve
+                    // basılabilir olmayı sürdürüyor. İzlenen videonun üstüne hata
+                    // koymak, kullanıcının yapabileceği bir şey olmadığı hâlde
+                    // arıza duygusu yaratırdı.
+                    return@launch
+                }
+                // Yanıt istek sırasıyla dönüyor. Uzunluk tutmuyorsa HİÇBİR düğme
+                // boyanmıyor: kayan bir liste yanlış videoyu yeşile çevirir ve bu,
+                // fark edilmesi en zor hata türü.
+                if (answers.size != chunk.size) return@launch
+                chunk.forEachIndexed { index, (key, _) ->
+                    ihbarMarks[key] = answers[index].toMark()
+                }
+            }
+        }
+    }
+
+    /**
+     * Sahibin dokunuşu: "bu görüntü gerçekten bir ihlal gösteriyor".
+     *
+     * Modelin asla veremeyeceği karar bu. Model ihlalin NE olduğunu çıkarıyor;
+     * buradaki dokunuş İHLAL OLDUĞUNU teyit ediyor.
+     */
+    fun markViolation(conversation: Conversation, mediaIndex: Int) {
+        val key = ihbarKey(conversation.key, mediaIndex)
+        val current = ihbarMark(conversation.key, mediaIndex)
+        // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
+        // sunucuda zararsız (teyit koşullu yazılıyor, dağıtım satırları tekil)
+        // ama ekranda "yeniden deniyor" gibi görünürdü.
+        if (current.phase == IhbarPhase.BUSY ||
+            current.phase == IhbarPhase.VERIFIED ||
+            current.phase == IhbarPhase.APPROVED
+        ) {
+            return
+        }
+        if (!ihbar.hasToken) {
+            ihbarMarks[key] = NO_TOKEN_MARK
+            return
+        }
+
+        ihbarMarks[key] = IhbarMark(IhbarPhase.BUSY)
+        viewModelScope.launch {
+            ihbarMarks[key] = try {
+                ihbar.approve(ihbarItemFor(conversation, mediaIndex)).toMark()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IhbarTokenMissingException) {
+                NO_TOKEN_MARK
+            } catch (e: IhbarException) {
+                IhbarMark(IhbarPhase.ERROR, e.message)
+            } catch (e: Exception) {
+                // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
+                IhbarMark(IhbarPhase.ERROR)
+            }
+        }
+    }
+
+    /** Ayar penceresine yapıştırılan belirteci saklar ve ekranı yeniden boyar. */
+    fun saveIhbarToken(token: String) {
+        settings.ihbarToken = token
+        // Eldeki "belirteç yok" durumları artık yalan; hepsi yeniden sorulacak.
+        ihbarMarks.clear()
+        refreshIhbar(items.toList())
+    }
+
+    /**
+     * Düğme anahtarı: konuşma + video sırası.
+     *
+     * Adres kullanılmıyor — sunucu bağlantıları istendiğinde yeniden imzalıyor,
+     * yani adres yarın aynı değil ve ona bağlanan durum videodan sessizce
+     * kopardı. elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
+     */
+    private fun ihbarKey(conversationKey: String, mediaIndex: Int) =
+        "$conversationKey#$mediaIndex"
 
     fun reportPlaybackFailure(proxyUrl: String, failure: PlaybackFailure) {
         failures[proxyUrl] = failure

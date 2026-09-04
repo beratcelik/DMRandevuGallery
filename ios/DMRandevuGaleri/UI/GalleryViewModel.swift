@@ -15,6 +15,18 @@ final class GalleryViewModel {
     /// perfectly good videos for the rest of the session.
     private(set) var failures: [String: PlaybackFailure] = [:]
 
+    /// Video başına ihlal düğmesinin durumu; anahtarı konuşma + video sırası.
+    ///
+    /// NEDEN SAYFADA DEĞİL DE BURADA: dikey akış yalnızca görünen sayfaları
+    /// derli tutuyor, iki konuşma aşağı kaydırıp geri dönmek sayfayı sıfırdan
+    /// oluşturuyor. Durum sayfada dursaydı yeşile dönmüş bir düğme her dönüşte
+    /// nötre döner ve sahip aynı videoyu ikinci kez işaretlerdi.
+    ///
+    /// NEDEN DİSKE YAZILMIYOR: tek doğru kaynak sunucu. Saklanan bir "yeşil",
+    /// yönetici konsolunda geri çekilen bir ihbarda yalan söylemeye devam
+    /// ederdi; uygulama yeniden açıldığında sayfa zaten tek istekte boyanıyor.
+    private(set) var ihbarMarks: [String: IhbarMark] = [:]
+
     private(set) var loading = true
     private(set) var hasMore = true
 
@@ -36,6 +48,7 @@ final class GalleryViewModel {
 
     private let igId: String
     private let repository = ServiceLocator.repository!
+    private let ihbar = ServiceLocator.ihbarRepository!
     private let settings = ServiceLocator.settings!
     private let marks = ServiceLocator.manualMarks
 
@@ -73,7 +86,11 @@ final class GalleryViewModel {
                 let offset = max(nextOffset - committedDeletes, 0)
                 let page = try await repository.loadPage(igId: igId, offset: offset, limit: Self.pageSize)
                 let known = Set(items.map(\.key))
-                items.append(contentsOf: page.items.filter { !known.contains($0.key) && !$0.urls.isEmpty })
+                let fresh = page.items.filter { !known.contains($0.key) && !$0.urls.isEmpty }
+                items.append(contentsOf: fresh)
+                // Sayfa geldiği anda, sahip oraya kaydırmadan önce boyanıyor:
+                // düğmenin rengi videoyla birlikte hazır olmalı.
+                refreshIhbar(fresh)
                 hasMore = page.hasMore
                 // The server count already reflects everything committed so far.
                 remaining = page.total
@@ -186,6 +203,123 @@ final class GalleryViewModel {
         }
         if pending?.conversation.key == conversation.key { pending = nil }
         if items.count <= Self.prefetchDistance { await loadMore() }
+    }
+
+    // MARK: - İhbar köprüsü
+
+    /// Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan.
+    func ihbarMark(conversationKey: String, mediaIndex: Int) -> IhbarMark {
+        ihbarMarks[Self.ihbarKey(conversationKey, mediaIndex)]
+            ?? IhbarMark(phase: ihbar.hasToken ? .unknown : .noToken)
+    }
+
+    /// Bir sayfa dolusu videonun durumunu TEK istekte alır ve düğmeleri boyar.
+    ///
+    /// NEDEN VİDEO BAŞINA DEĞİL: sayfa başına beş konuşma ve her birinde birkaç
+    /// video var. Video başına istek, her kaydırmada onlarca istek demek olurdu;
+    /// mobil bağlantıda gözle görülür gecikme ve sunucudaki oran sınırının hiçbir
+    /// iş yapmadan dolması.
+    private func refreshIhbar(_ conversations: [Conversation]) {
+        guard ihbar.hasToken else { return }
+        let targets: [(key: String, item: IhbarItem)] = conversations.flatMap { conversation in
+            conversation.urls.indices.map { index in
+                (
+                    key: Self.ihbarKey(conversation.key, index),
+                    item: ihbarItem(for: conversation, mediaIndex: index)
+                )
+            }
+        }
+        guard !targets.isEmpty else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for chunk in Self.chunked(targets, by: IhbarRepository.maxItems) {
+                let answers: [IhbarStatusItem]
+                do {
+                    answers = try await ihbar.status(chunk.map { $0.item })
+                } catch let error as IhbarError {
+                    // Sunucu isteği anladı ve reddetti; pratikte bu "belirteç
+                    // geçersiz" demek. Yutmak, sahibin bozuk bir belirteçle
+                    // düğmeye basıp durmasına yol açardı — sebebi düğmede yazsın.
+                    for target in chunk {
+                        ihbarMarks[target.key] = IhbarMark(phase: .error, detail: error.message)
+                    }
+                    return
+                } catch {
+                    // Ağ yok ya da sunucu kapalı: düğmeler "bilinmiyor" kalıyor ve
+                    // basılabilir olmayı sürdürüyor. İzlenen videonun üstüne hata
+                    // koymak, kullanıcının yapabileceği bir şey olmadığı hâlde
+                    // arıza duygusu yaratırdı.
+                    return
+                }
+                // Yanıt istek sırasıyla dönüyor. Uzunluk tutmuyorsa HİÇBİR düğme
+                // boyanmıyor: kayan bir liste yanlış videoyu yeşile çevirir ve bu,
+                // fark edilmesi en zor hata türü.
+                guard answers.count == chunk.count else { return }
+                for (index, target) in chunk.enumerated() {
+                    ihbarMarks[target.key] = answers[index].mark
+                }
+            }
+        }
+    }
+
+    /// Sahibin dokunuşu: "bu görüntü gerçekten bir ihlal gösteriyor".
+    ///
+    /// Modelin asla veremeyeceği karar bu. Model ihlalin NE olduğunu çıkarıyor;
+    /// buradaki dokunuş İHLAL OLDUĞUNU teyit ediyor.
+    func markViolation(_ conversation: Conversation, mediaIndex: Int) {
+        let key = Self.ihbarKey(conversation.key, mediaIndex)
+        let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
+        // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
+        // sunucuda zararsız (teyit koşullu yazılıyor, dağıtım satırları tekil) ama
+        // ekranda "yeniden deniyor" gibi görünürdü.
+        guard current.phase != .busy, current.phase != .verified, current.phase != .approved else {
+            return
+        }
+        guard ihbar.hasToken else {
+            ihbarMarks[key] = IhbarMark(phase: .noToken)
+            return
+        }
+
+        ihbarMarks[key] = IhbarMark(phase: .busy)
+        let item = ihbarItem(for: conversation, mediaIndex: mediaIndex)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                ihbarMarks[key] = try await ihbar.approve(item).mark
+            } catch is IhbarTokenMissingError {
+                ihbarMarks[key] = IhbarMark(phase: .noToken)
+            } catch let error as IhbarError {
+                ihbarMarks[key] = IhbarMark(phase: .error, detail: error.message)
+            } catch {
+                // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
+                ihbarMarks[key] = IhbarMark(phase: .error)
+            }
+        }
+    }
+
+    /// Ayar penceresine yapıştırılan belirteci saklar ve ekranı yeniden boyar.
+    func saveIhbarToken(_ token: String) {
+        settings.ihbarToken = token
+        // Eldeki "belirteç yok" durumları artık yalan; hepsi yeniden sorulacak.
+        ihbarMarks.removeAll()
+        refreshIhbar(items)
+    }
+
+    /// Düğme anahtarı: konuşma + video sırası.
+    ///
+    /// Adres kullanılmıyor — sunucu bağlantıları istendiğinde yeniden imzalıyor,
+    /// yani adres yarın aynı değil ve ona bağlanan durum videodan sessizce
+    /// kopardı; elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
+    private static func ihbarKey(_ conversationKey: String, _ mediaIndex: Int) -> String {
+        "\(conversationKey)#\(mediaIndex)"
+    }
+
+    /// Sunucunun tek istekte kabul ettiğinden fazlasını sormamak için.
+    private static func chunked<T>(_ items: [T], by size: Int) -> [[T]] {
+        stride(from: 0, to: items.count, by: size).map {
+            Array(items[$0..<min($0 + size, items.count)])
+        }
     }
 
     // MARK: - Toggles

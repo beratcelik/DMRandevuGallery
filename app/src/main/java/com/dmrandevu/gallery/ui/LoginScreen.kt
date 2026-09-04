@@ -109,6 +109,34 @@ fun LoginScreen(
             label = { Text(stringResource(R.string.login_account)) },
             singleLine = true,
             prefix = { Text("@") },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+        )
+
+        // Trafik İhbar köprüsü. Girişin kendisiyle ilgisi yok — bu alanlar başka
+        // bir sunucuya ait — ama uygulamadaki tek ayar ekranı burası, ve belirteç
+        // bir kez yapıştırılıp unutulacak bir şey.
+        OutlinedTextField(
+            value = state.ihbarBaseUrl,
+            onValueChange = viewModel::onIhbarBaseUrl,
+            label = { Text(stringResource(R.string.login_ihbar_server)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+        )
+
+        OutlinedTextField(
+            value = state.ihbarToken,
+            onValueChange = viewModel::onIhbarToken,
+            label = { Text(stringResource(R.string.login_ihbar_token)) },
+            singleLine = true,
+            // Gizlenmiyor: yapıştırılan belirtecin doğru olduğunu ("tid_" ile
+            // başlıyor mu) gözle doğrulayabilmek, bir noktalar dizisine bakıp
+            // ummaktan iyi. Cihaz zaten sahibin kendi telefonu.
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier
                 .fillMaxWidth()

@@ -16,6 +16,9 @@ struct ConversationPageView: View {
     @State private var sharingStory = false
     @State private var sharingReels = false
     @State private var captionForURL: String?
+    /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
+    @State private var ihbarTokenPrompt = false
+    @State private var ihbarTokenDraft = ""
 
     /// Percentage of the running export, or nil while nothing is being processed. Only one action
     /// can run at a time, so a single holder covers all three buttons.
@@ -172,6 +175,7 @@ struct ConversationPageView: View {
                 }
             }
 
+            ihbarButton
             bottomBar
         }
         .clipped()
@@ -211,6 +215,24 @@ struct ConversationPageView: View {
                 onSessionLost: model.reportSessionLost,
                 onToast: { model.toast = $0 }
             )
+        }
+        // NEDEN GİRİŞ EKRANINDAKİ ALAN TEK BAŞINA YETMİYOR: sunucu oturumu yedi gün
+        // yaşıyor ve uygulama açık oturumla açıldığında giriş ekranı HİÇ görünmüyor.
+        // Belirteci yalnızca oraya koysaydık, sahip düğmenin neden çalışmadığını
+        // anlatan bir yazıya bakıp ona ulaşamayacağı bir alana yönlendirilirdi.
+        .alert(Strings.ihbarTokenTitle, isPresented: $ihbarTokenPrompt) {
+            TextField(Strings.ihbarTokenHint, text: $ihbarTokenDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button(Strings.ihbarTokenSave) {
+                let token = ihbarTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                ihbarTokenDraft = ""
+                // Boş kaydetmek, çalışan bir belirteci silmek demek olurdu.
+                if !token.isEmpty { model.saveIhbarToken(token) }
+            }
+            Button(Strings.cancel, role: .cancel) { ihbarTokenDraft = "" }
+        } message: {
+            Text(Strings.ihbarTokenExplain)
         }
     }
 
@@ -579,6 +601,49 @@ struct ConversationPageView: View {
     private func percent(_ busy: Bool, _ fallback: String) -> String {
         if busy, let exportProgress { return Strings.progress(exportProgress) }
         return fallback
+    }
+
+    // MARK: - İhlal düğmesi
+
+    /// Sahibin dokunuşu.
+    ///
+    /// Ekranın altı katmanlı: eylem şeridi en altta (0-92pt), oynatma çubuğu
+    /// 92pt'de, küfür işaretleme düğmesi 140pt'de. Bu düğme o an açık olan en üst
+    /// katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk açıldığı anda
+    /// ikisi üst üste binerdi.
+    private var ihbarButton: some View {
+        VStack {
+            Spacer()
+            HStack {
+                IhbarMarkButton(
+                    mark: ihbarMark,
+                    onTap: {
+                        // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
+                        // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
+                        // sormak, düğmenin tek makul davranışı.
+                        if ihbarMark.phase == .noToken {
+                            ihbarTokenPrompt = true
+                        } else {
+                            model.markViolation(conversation, mediaIndex: currentIndex)
+                        }
+                    },
+                    onLongPress: { ihbarTokenPrompt = true }
+                )
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
+        }
+    }
+
+    private var ihbarMark: IhbarMark {
+        model.ihbarMark(conversationKey: conversation.key, mediaIndex: currentIndex)
+    }
+
+    private var ihbarBottomPadding: CGFloat {
+        if model.censorAudio { return 200 }
+        if controlsShown { return 148 }
+        return 92
     }
 
     // MARK: - Playback plumbing

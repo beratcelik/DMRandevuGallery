@@ -46,6 +46,21 @@ struct LoginView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
+                // Trafik İhbar köprüsü. Girişin kendisiyle ilgisi yok — bu alanlar
+                // başka bir sunucuya ait — ama uygulamadaki tek ayar ekranı burası
+                // ve belirteç bir kez yapıştırılıp unutulacak bir şey.
+                field(Strings.loginIhbarServer, text: $model.ihbarBaseURL, identifier: "loginIhbarServer")
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                // Gizlenmiyor: yapıştırılan belirtecin doğru olduğunu ("tid_" ile
+                // başlıyor mu) gözle doğrulayabilmek, bir noktalar dizisine bakıp
+                // ummaktan iyi. Cihaz zaten sahibin kendi telefonu.
+                field(Strings.loginIhbarToken, text: $model.ihbarToken, identifier: "loginIhbarToken")
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
                 if let error = model.error {
                     Text(message(for: error))
                         .foregroundStyle(.red)

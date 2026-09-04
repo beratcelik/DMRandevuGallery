@@ -3,6 +3,7 @@ package com.dmrandevu.gallery
 import android.content.Context
 import androidx.media3.common.util.UnstableApi
 import com.dmrandevu.gallery.data.GalleryRepository
+import com.dmrandevu.gallery.data.IhbarRepository
 import com.dmrandevu.gallery.data.PersistentCookieJar
 import com.dmrandevu.gallery.data.SettingsStore
 import com.dmrandevu.gallery.media.Downloader
@@ -33,6 +34,13 @@ object ServiceLocator {
         private set
 
     lateinit var repository: GalleryRepository
+        private set
+
+    /**
+     * Trafik İhbar köprüsü. Galeri deposundan ayrı: başka bir sunucu, başka bir
+     * kimlik doğrulama ve 401'in bambaşka bir anlamı (bkz. IhbarRepository).
+     */
+    lateinit var ihbarRepository: IhbarRepository
         private set
 
     lateinit var censorModels: CensorModels
@@ -69,6 +77,7 @@ object ServiceLocator {
             }
             .build()
         repository = GalleryRepository(client, settings, cookieJar)
+        ihbarRepository = IhbarRepository(client, settings)
         censorModels = CensorModels(appContext, client)
         manualMarks = ManualMarks(prefs)
         exporter = VideoExporter(appContext, AudioCensor(appContext, censorModels))

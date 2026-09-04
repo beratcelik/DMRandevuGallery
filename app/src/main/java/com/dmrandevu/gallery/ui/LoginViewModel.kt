@@ -18,6 +18,10 @@ data class LoginUiState(
     val username: String = "",
     val password: String = "",
     val igUsername: String = SettingsStore.DEFAULT_IG_ACCOUNT,
+    /** Trafik İhbar sunucusu — DMRandevu'dan ayrı bir sistem, ayrı bir adres. */
+    val ihbarBaseUrl: String = SettingsStore.DEFAULT_IHBAR_BASE_URL,
+    /** İhbar cihaz belirteci. Boş bırakılabilir; ihlal düğmesi o zaman çalışmaz. */
+    val ihbarToken: String = "",
     val probing: Boolean = true,
     val submitting: Boolean = false,
     val error: LoginError? = null
@@ -32,7 +36,12 @@ class LoginViewModel : ViewModel() {
         LoginUiState(
             baseUrl = settings.baseUrl,
             username = settings.adminUsername,
-            igUsername = settings.igUsername
+            igUsername = settings.igUsername,
+            ihbarBaseUrl = settings.ihbarBaseUrl,
+            // Saklanan belirteç alana geri konuyor: boş açsaydı, sırf başka bir
+            // ayarı değiştirmek için yapılan bir girişte kaydetme adımı çalışan
+            // belirteci silerdi.
+            ihbarToken = settings.ihbarToken
         )
     )
     val state: StateFlow<LoginUiState> = _state
@@ -49,6 +58,8 @@ class LoginViewModel : ViewModel() {
     fun onUsername(value: String) = _state.update { it.copy(username = value, error = null) }
     fun onPassword(value: String) = _state.update { it.copy(password = value, error = null) }
     fun onIgUsername(value: String) = _state.update { it.copy(igUsername = value, error = null) }
+    fun onIhbarBaseUrl(value: String) = _state.update { it.copy(ihbarBaseUrl = value, error = null) }
+    fun onIhbarToken(value: String) = _state.update { it.copy(ihbarToken = value, error = null) }
 
     /**
      * A stored cookie may still be valid (7-day server session). Resolving the account both
@@ -82,6 +93,8 @@ class LoginViewModel : ViewModel() {
                 }
                 settings.adminUsername = current.username
                 settings.igUsername = current.igUsername
+                settings.ihbarBaseUrl = current.ihbarBaseUrl
+                settings.ihbarToken = current.ihbarToken
                 val igId = repo.resolveAccount(current.igUsername).igId
                 _authenticated.value = igId
             } catch (e: AccountNotFoundException) {

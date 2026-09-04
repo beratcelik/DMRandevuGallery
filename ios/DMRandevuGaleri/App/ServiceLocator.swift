@@ -9,6 +9,9 @@ enum ServiceLocator {
     private(set) static var cookies: CookieStore!
     private(set) static var session: URLSession!
     private(set) static var repository: GalleryRepository!
+    /// Trafik İhbar köprüsü. Galeri deposundan ayrı: başka bir sunucu, başka bir
+    /// kimlik doğrulama ve 401'in bambaşka bir anlamı (bkz. IhbarRepository).
+    private(set) static var ihbarRepository: IhbarRepository!
     /// Downloads and verifies the speech models the censor filter needs.
     static let censorModels = CensorModels()
 
@@ -35,6 +38,7 @@ enum ServiceLocator {
         session = URLSession(configuration: configuration)
 
         repository = GalleryRepository(session: session, settings: settings, cookies: cookies)
+        ihbarRepository = IhbarRepository(session: session, settings: settings)
         exporter = VideoExporter(audioCensor: AudioCensor(models: censorModels))
         downloader = Downloader(session: session, repository: repository, exporter: exporter)
     }

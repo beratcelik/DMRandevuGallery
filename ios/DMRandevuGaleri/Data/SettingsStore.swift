@@ -4,6 +4,7 @@ import Foundation
 final class SettingsStore {
 
     static let defaultBaseURL = "https://dmrandevu.com"
+    static let defaultIhbarBaseURL = "https://ihbar.lega.digital"
     static let defaultIGAccount = "trafik_cezasi"
 
     private let defaults: UserDefaults
@@ -35,6 +36,31 @@ final class SettingsStore {
             let handle = newValue.trimmingCharacters(in: .whitespaces)
             defaults.set(handle.hasPrefix("@") ? String(handle.dropFirst()) : handle, forKey: Key.ig)
         }
+    }
+
+    /// Trafik İhbar sunucusunun adresi.
+    ///
+    /// DMRandevu'dan AYRI bir sistem ve ayrı bir sunucu; ``baseURL`` ile
+    /// karıştırılmamalı. Ayrı durmasının sebebi yalnızca düzen değil: galeri
+    /// sunucusu değiştiğinde (yerel bir kopyaya bakarken) ihbar sunucusunun
+    /// onunla birlikte kaymaması gerekiyor.
+    var ihbarBaseURL: String {
+        get { defaults.string(forKey: Key.ihbarBaseURL) ?? Self.defaultIhbarBaseURL }
+        set {
+            var trimmed = newValue.trimmingCharacters(in: .whitespaces)
+            while trimmed.hasSuffix("/") { trimmed.removeLast() }
+            defaults.set(trimmed, forKey: Key.ihbarBaseURL)
+        }
+    }
+
+    /// İhbar sunucusunun cihaz belirteci ("tid_…").
+    ///
+    /// Yönetici konsolunda bir kez üretiliyor ve bir daha gösterilmiyor, o yüzden
+    /// buraya bir kez yapıştırılıp saklanıyor. Boşken ihlal düğmesi ağa hiç
+    /// çıkmıyor ve bunu kullanıcıya söylüyor.
+    var ihbarToken: String {
+        get { defaults.string(forKey: Key.ihbarToken) ?? "" }
+        set { defaults.set(newValue.trimmingCharacters(in: .whitespaces), forKey: Key.ihbarToken) }
     }
 
     /// Blur faces in every exported video. Off by default: it re-encodes, which takes a while.
@@ -87,6 +113,8 @@ final class SettingsStore {
 
     private enum Key {
         static let baseURL = "base_url"
+        static let ihbarBaseURL = "ihbar_base_url"
+        static let ihbarToken = "ihbar_token"
         static let admin = "admin_username"
         static let ig = "ig_username"
         static let blurFaces = "blur_faces"
