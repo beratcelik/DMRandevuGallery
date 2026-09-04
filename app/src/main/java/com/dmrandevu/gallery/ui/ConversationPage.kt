@@ -630,35 +630,43 @@ fun ConversationPage(
 
         // İhlal düğmesi — sahibin dokunuşu.
         //
+        // YALNIZCA ihbar hesabında (trafik_cezasi) çiziliyor. Galeri iki hesap
+        // geziyor; ihbar sisteminin tanıdığı hesap ise tek. Diğerinde düğme
+        // gösterilseydi her dokunuş, karşılığı olmayan bir kaydı onaylatmaya
+        // çalışıp "bulunamadı" ile dönerdi. Kapının kendisi ve ağ tarafı
+        // GalleryViewModel.ihbarEnabled üzerinde.
+        //
         // Ekranın altı katmanlı: eylem şeridi en altta (0-92dp), oynatma çubuğu
         // 92dp'de, küfür işaretleme düğmesi 140dp'de. Bu düğme o an açık olan en
         // üst katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk
         // açıldığı anda ikisi üst üste binerdi.
-        val ihbarMark = viewModel.ihbarMark(conversation.key, mediaPager.currentPage)
-        IhbarMarkButton(
-            mark = ihbarMark,
-            onClick = {
-                // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
-                // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
-                // sormak, düğmenin tek makul davranışı.
-                if (ihbarMark.phase == IhbarPhase.NO_TOKEN) {
-                    ihbarTokenPrompt = true
-                } else {
-                    viewModel.markViolation(conversation, mediaPager.currentPage)
-                }
-            },
-            onLongClick = { ihbarTokenPrompt = true },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(
-                    start = 12.dp,
-                    bottom = when {
-                        censorAudio -> 200.dp
-                        controlsShown -> 148.dp
-                        else -> 92.dp
+        if (viewModel.ihbarEnabled) {
+            val ihbarMark = viewModel.ihbarMark(conversation.key, mediaPager.currentPage)
+            IhbarMarkButton(
+                mark = ihbarMark,
+                onClick = {
+                    // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
+                    // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
+                    // sormak, düğmenin tek makul davranışı.
+                    if (ihbarMark.phase == IhbarPhase.NO_TOKEN) {
+                        ihbarTokenPrompt = true
+                    } else {
+                        viewModel.markViolation(conversation, mediaPager.currentPage)
                     }
-                )
-        )
+                },
+                onLongClick = { ihbarTokenPrompt = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(
+                        start = 12.dp,
+                        bottom = when {
+                            censorAudio -> 200.dp
+                            controlsShown -> 148.dp
+                            else -> 92.dp
+                        }
+                    )
+            )
+        }
 
         // Dots + actions.
         Row(

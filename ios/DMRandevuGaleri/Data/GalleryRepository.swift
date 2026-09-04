@@ -199,8 +199,13 @@ final class GalleryRepository {
     }
 
     /// Handle → Instagram id, for servers without /admin/media-gallery-resolve.
+    ///
+    /// İhbar hesabının kimliği burada İKİNCİ KEZ yazılmıyor: aynı çifti
+    /// ``IhbarAccount`` düğmenin görünürlük kararı için zaten tutuyor. İki kopya
+    /// birbirinden kaysaydı, eski bir sunucuya bağlanıldığında hesap doğru
+    /// çözülür ama düğme ait olduğu hesapta kaybolurdu.
     private static let knownAccounts = [
-        "trafik_cezasi": "17841468848724091",
+        IhbarAccount.handle: IhbarAccount.igId,
         "trafykamerasi": "17841472755272054"
     ]
 }

@@ -53,6 +53,15 @@ fun GalleryScreen(
     viewModel.currentPageProvider = { pagerState.currentPage }
     viewModel.keepCurrentPage = pagerState::requestScrollToPage
 
+    // Gezilen hesabı ViewModel'e bildiriyoruz.
+    //
+    // NEDEN KURUCUYA VERİLEN [igId] YETMİYOR: `viewModel()` anahtarsız
+    // çağrıldığı için örnek etkinliğin deposunda kalıyor. Oturum kaybından
+    // sonra BAŞKA bir hesapla girildiğinde aynı örnek geri dönüyor ve kurucusu
+    // bir daha çalışmıyor — ihbar düğmesinin görünürlüğü ile eldeki işaretler
+    // o hâlde eski hesabın kararı olurdu.
+    LaunchedEffect(igId, viewModel) { viewModel.onAccountShown(igId) }
+
     val playerManager = remember {
         PlayerManager(
             context = context.applicationContext,

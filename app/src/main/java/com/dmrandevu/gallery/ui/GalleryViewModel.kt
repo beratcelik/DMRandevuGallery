@@ -3,12 +3,14 @@ package com.dmrandevu.gallery.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dmrandevu.gallery.ServiceLocator
 import com.dmrandevu.gallery.data.Conversation
+import com.dmrandevu.gallery.data.IhbarAccount
 import com.dmrandevu.gallery.data.IhbarException
 import com.dmrandevu.gallery.data.IhbarMark
 import com.dmrandevu.gallery.data.IhbarPhase
@@ -72,6 +74,28 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * başlamadan önce var olmak zorunda.
      */
     private val ihbarMarks = mutableStateMapOf<String, IhbarMark>()
+
+    /**
+     * İhbar köprüsü bu hesapta açık mı — düğmenin çizilmesi de, ağa çıkılması
+     * da yalnızca buna bakıyor.
+     *
+     * NEDEN YALNIZCA ÇİZİM GİZLENMİYOR: gizli bir düğme yine de sayfa başına
+     * bir toplu durum isteği attırırdı. trafykamerasi'nin videolarının ihbar
+     * sisteminde karşılığı HİÇ yok; o istekler her kaydırmada hiçbir şey
+     * öğrenmeden sunucunun oran sınırını doldurur ve mobil bağlantıda boşuna
+     * gecikme yaratırdı.
+     *
+     * NEDEN [ihbarMarks] İLE AYNI YERDE: ilk sayfa init bloğundan yükleniyor
+     * ve o akış boyamaya kalkmadan önce bu değerin okunabilir olması gerek.
+     */
+    var ihbarEnabled by mutableStateOf(isIhbarAccount(igId))
+        private set
+
+    /**
+     * Elde tutulan işaretlerin ait olduğu hesap; [onAccountShown] değişimi
+     * bununla karşılaştırarak anlıyor.
+     */
+    private var ihbarAccountId: String = igId
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
@@ -270,6 +294,44 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     // ── ihbar köprüsü ─────────────────────────────────────────────────────────────
 
+    /**
+     * Ekranda o an hangi hesabın gezildiğini bildirir.
+     *
+     * NEDEN KURUCUDAKİ [igId] TEK BAŞINA YETMİYOR: bu ViewModel etkinliğin
+     * deposunda yaşıyor ve `viewModel()` anahtarsız çağrıldığı için, oturum
+     * kaybından sonra BAŞKA bir hesapla girildiğinde aynı örnek geri dönüyor.
+     * Kurucudaki kimlik o anda bir önceki hesabı gösterir; kapı yalnızca ona
+     * dayansaydı düğme trafykamerasi'nde de çizilmeye devam ederdi.
+     *
+     * Hesap değiştiğinde eldeki işaretler atılıyor: haritanın anahtarı
+     * konuşma + video sırası, hesap değil. Eski hesaptan kalan bir "yeşil",
+     * yeni hesapta aynı anahtara denk gelen bambaşka bir videonun üstünde
+     * görünürdü — fark edilmesi en zor hata türü.
+     */
+    fun onAccountShown(accountId: String) {
+        if (accountId != ihbarAccountId) {
+            ihbarAccountId = accountId
+            ihbarMarks.clear()
+        }
+        ihbarEnabled = isIhbarAccount(accountId)
+    }
+
+    /**
+     * Gezilen hesap, ihbar sisteminin tanıdığı tek hesap mı?
+     *
+     * İKİ KAYNAK BİRDEN soruluyor: sayfaların gerçekten çekildiği sayısal
+     * kimlik ve ayarda saklanan hesap adı ([SettingsStore.igUsername]).
+     * İkisinin ayrışabildiği tek durumda (yukarıdaki ViewModel yeniden
+     * kullanımı) yanlış hesapta düğme göstermek, doğru hesapta bir kez
+     * göstermemekten çok daha pahalı: oradaki tek dokunuş, ihbar sisteminde
+     * karşılığı olmayan bir kaydı onaylatmaya çalışır.
+     *
+     * Ayardaki ad kurucuda bir kez değil, HER çağrıda okunuyor — giriş ekranı
+     * onu değiştirdiğinde bu örnek hâlâ yaşıyor olabilir.
+     */
+    private fun isIhbarAccount(accountId: String): Boolean =
+        IhbarAccount.matches(accountId) && IhbarAccount.matches(settings.igUsername)
+
     /** Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan. */
     fun ihbarMark(conversationKey: String, mediaIndex: Int): IhbarMark =
         ihbarMarks[ihbarKey(conversationKey, mediaIndex)]
@@ -284,7 +346,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * iş yapmadan dolması.
      */
     private fun refreshIhbar(conversations: List<Conversation>) {
-        if (!ihbar.hasToken) return
+        // Yanlış hesapta tek bir istek bile atılmıyor; gerekçesi
+        // [ihbarEnabled] üzerinde.
+        if (!ihbarEnabled || !ihbar.hasToken) return
         val targets = conversations.flatMap { conversation ->
             conversation.urls.indices.map { index ->
                 ihbarKey(conversation.key, index) to ihbarItemFor(conversation, index)
@@ -331,6 +395,10 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * buradaki dokunuş İHLAL OLDUĞUNU teyit ediyor.
      */
     fun markViolation(conversation: Conversation, mediaIndex: Int) {
+        // Düğme bu hesapta zaten çizilmiyor. Kapı yine de burada duruyor:
+        // çizimi gizlemek bir görünüm kararı, onayı göndermek ise emniyete
+        // giden bir kayıt — ikincisi çağıranın dikkatine bırakılamaz.
+        if (!ihbarEnabled) return
         val key = ihbarKey(conversation.key, mediaIndex)
         val current = ihbarMark(conversation.key, mediaIndex)
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış

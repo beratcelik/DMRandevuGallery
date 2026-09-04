@@ -611,28 +611,37 @@ struct ConversationPageView: View {
     /// 92pt'de, küfür işaretleme düğmesi 140pt'de. Bu düğme o an açık olan en üst
     /// katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk açıldığı anda
     /// ikisi üst üste binerdi.
+    ///
+    /// NEDEN GİZLEMEK, "DEVRE DIŞI BIRAKMAK" DEĞİL: ihbar hattı tek bir hesabı
+    /// dinliyor (bkz. ``IhbarAccount``) ve öteki hesabın videosu orada hiçbir
+    /// kayıtla eşleşmiyor. Soluk ama duran bir düğme, sahibi "neden çalışmıyor"
+    /// diye uğraştırırdı; olmayan düğme ise doğru cümleyi kuruyor — bu hesap
+    /// ihbar hattına bağlı değil.
+    @ViewBuilder
     private var ihbarButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                IhbarMarkButton(
-                    mark: ihbarMark,
-                    onTap: {
-                        // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
-                        // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
-                        // sormak, düğmenin tek makul davranışı.
-                        if ihbarMark.phase == .noToken {
-                            ihbarTokenPrompt = true
-                        } else {
-                            model.markViolation(conversation, mediaIndex: currentIndex)
-                        }
-                    },
-                    onLongPress: { ihbarTokenPrompt = true }
-                )
+        if model.ihbarAvailable {
+            VStack {
                 Spacer()
+                HStack {
+                    IhbarMarkButton(
+                        mark: ihbarMark,
+                        onTap: {
+                            // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu
+                            // istemeye gidiyor: "sessizce başarısız olmak" yerine
+                            // eksik olan şeyi sormak, düğmenin tek makul davranışı.
+                            if ihbarMark.phase == .noToken {
+                                ihbarTokenPrompt = true
+                            } else {
+                                model.markViolation(conversation, mediaIndex: currentIndex)
+                            }
+                        },
+                        onLongPress: { ihbarTokenPrompt = true }
+                    )
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
         }
     }
 

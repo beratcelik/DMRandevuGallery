@@ -47,6 +47,27 @@ final class GalleryViewModel {
     private(set) var censorByHand: Bool
 
     private let igId: String
+
+    /// İhbar düğmesinin bu hesapta çizilip çizilmeyeceği.
+    ///
+    /// İhbar sistemi tek bir Instagram hesabını dinliyor (bkz. ``IhbarAccount``),
+    /// galeri ise iki hesap geziyor. Karar burada bir kez veriliyor ve hem
+    /// düğmenin görünürlüğünü hem de ağa çıkan iki isteği aynı anda kesiyor;
+    /// yalnızca görünümde saklamak, arka planda çalışan toplu durum sorgusunu
+    /// yanlış hesapta da attırmaya devam ederdi.
+    ///
+    /// NEDEN ``SettingsStore/igUsername`` DEĞİL DE ``igId``: ekrandaki videolar
+    /// bu kimlikle sayfalanıyor, yani gerçekten GEZİLEN hesap bu. igUsername
+    /// giriş ekranına yazılmış bir metin; ikisinin ayrıştığı bir an olursa karar
+    /// ekranda ne olduğuna göre verilmeli.
+    ///
+    /// NEDEN AYRICA "hesap değişti" DİYE ÖNBELLEK TEMİZLENMİYOR: hesap bu görünüm
+    /// modelinin kimliği. ``igId`` değişmez ve hesap değiştirmenin tek yolu giriş
+    /// ekranından geçmek — orada `igId` bir an nil oluyor, GalleryView `.id(igId)`
+    /// ile sıfırdan kuruluyor ve ``ihbarMarks`` yeni örnekte boş başlıyor. Bir
+    /// hesabın işaretlerinin diğerinde görünmesi bu yüzden mümkün değil.
+    let ihbarAvailable: Bool
+
     private let repository = ServiceLocator.repository!
     private let ihbar = ServiceLocator.ihbarRepository!
     private let settings = ServiceLocator.settings!
@@ -60,6 +81,7 @@ final class GalleryViewModel {
 
     init(igId: String) {
         self.igId = igId
+        ihbarAvailable = IhbarAccount.matches(igId)
         blurFaces = settings.blurFaces
         blurPlates = settings.blurPlates
         fastPlates = settings.fastPlates
@@ -220,7 +242,10 @@ final class GalleryViewModel {
     /// mobil bağlantıda gözle görülür gecikme ve sunucudaki oran sınırının hiçbir
     /// iş yapmadan dolması.
     private func refreshIhbar(_ conversations: [Conversation]) {
-        guard ihbar.hasToken else { return }
+        // Yanlış hesapta ağa TEK istek bile çıkmıyor. İhbar sunucusu bu hesabın
+        // videolarını tanımadığı için elli öğelik sorgu yalnızca oran sınırını
+        // doldurur, sonra da her düğmeye taşıyamayacağı bir hata metni yazardı.
+        guard ihbarAvailable, ihbar.hasToken else { return }
         let targets: [(key: String, item: IhbarItem)] = conversations.flatMap { conversation in
             conversation.urls.indices.map { index in
                 (
@@ -268,6 +293,10 @@ final class GalleryViewModel {
     /// Modelin asla veremeyeceği karar bu. Model ihlalin NE olduğunu çıkarıyor;
     /// buradaki dokunuş İHLAL OLDUĞUNU teyit ediyor.
     func markViolation(_ conversation: Conversation, mediaIndex: Int) {
+        // Düğme yanlış hesapta zaten çizilmiyor; koruma burada da duruyor çünkü
+        // onay tek yönlü bir eylem — kaydı emniyet birimine giden hatta sokuyor
+        // ve tek bir görünüm koşulunun doğru yazılmış olmasına bırakılamaz.
+        guard ihbarAvailable else { return }
         let key = Self.ihbarKey(conversation.key, mediaIndex)
         let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
