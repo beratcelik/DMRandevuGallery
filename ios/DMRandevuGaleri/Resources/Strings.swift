@@ -93,6 +93,23 @@ enum Strings {
     static let ihbarNoToken = "İhbar belirteci yok"
     static let ihbarNoTokenDetail = "Dokunun ve cihaz belirtecini yapıştırın"
     static func ihbarMissingFields(_ fields: String) -> String { "\(fields) eksik" }
+    // Olumsuz dokunuşun KENDİ metinleri — olumlu yoldan ödünç ALINMIYOR.
+    // Bir süre alınıyordu; gerekçe "hangi düğmenin konuştuğunu rengiyle konumu
+    // söyler"di. Söylemiyor: hata hâlinde İKİ düğme de kırmızıya dönüyor, yani
+    // rengin ayırt ediciliği tam da metnin en çok gerektiği anda kayboluyor.
+    // Üstelik ödünç alınan metin ("İşaretlenemedi") olumsuz düğmede BAŞARISIZ
+    // OLANIN TERSİNİ söylüyordu — sahip, elemenin değil işaretlemenin
+    // patladığını sanıp öteki düğmeye basar ve ihbarı emniyete gönderirdi.
+    // Android tarafı bu ayrımı zaten yapıyor; metinler onunla birebir.
+    static let ihbarNotViolation = "İhlal değil"
+    static let ihbarNotViolationSending = "Eleniyor…"
+    static let ihbarNotViolationMarked = "İhlal değil — elendi"
+    static let ihbarNotViolationError = "Elenemedi — dokunup tekrar deneyin"
+    static let ihbarRetractTitle = "Bu ihbar geri çekilsin mi?"
+    static let ihbarRetractExplain =
+        "Bu kayıt onaylandı ve memurlara iletildi. \"İhlal değil\" demek, ihbarı geri çeker "
+        + "ve memurlara geri çekme bildirimi gönderir."
+    static let ihbarRetractConfirm = "Geri çek"
     static let ihbarTokenTitle = "İhbar cihaz belirteci"
     static let ihbarTokenExplain =
         "Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli."

@@ -87,6 +87,28 @@ data class IhbarStatusItem(
     val stateLabel: String = "",
     /** YEŞİL DÜĞMENİN dayandığı tek alan. */
     val humanVerified: Boolean = false,
+    /**
+     * OLUMSUZ DÜĞMENİN dayandığı tek alan: sahip bu görüntüye "ihlal değil"
+     * dedi mi.
+     *
+     * NEDEN [state] TEK BAŞINA YETMİYOR: sahip "ihlal değil" dediğinde sunucu
+     * kaydı TRAFIK_DISI sebebiyle reddediyor ve durum "reddedildi" oluyor — ama
+     * aynı durum, yöneticinin konsoldan yaptığı reddin de sonucu. Ayrı bir alan
+     * olmasaydı düğme, sahibin hiç dokunmadığı bir kaydı "işaretlenmiş"
+     * gösterir; sahip de ikinci kez bakmaya gerek duymadığı için ihlal olan bir
+     * görüntü sessizce elenirdi.
+     *
+     * ADI SUNUCUYLA BİREBİR AYNI OLMAK ZORUNDA. Bu alan bir süre `humanRejected`
+     * yazılmıştı; sunucu ise her zaman `notViolation` gönderiyor. Eksik anahtar
+     * derleyiciye görünmez — kotlinx.serialization sessizce varsayılana, yani
+     * false'a düşer. Sonuç, tam da bu düğmenin önlemek için yazıldığı arıza
+     * oluyordu: sahibin elediği video bir sonraki açılışta yeniden "el
+     * değmemiş" görünüyor, ikinci kez bakılmıyor ve memura gidiyordu.
+     *
+     * Varsayılanın false olması yine de doğru: alanı tanımayan ESKİ bir
+     * sunucuya karşı düğme nötr kalır ve yanlış bir şey iddia etmez.
+     */
+    val notViolation: Boolean = false,
     val matchedBy: String? = null,
     val violationCode: String? = null,
     /** Eksik alanların onayı gerçekten ENGELLEYEN alt kümesi (il / tarih / medya). */
@@ -108,6 +130,29 @@ data class IhbarApproveResponse(
      * Kaç memura gittiği de, hangi alanın eksik olduğu da bunun içinde — o
      * yüzden o alanlar ayrıca taşınmıyor.
      */
+    val message: String = ""
+)
+
+/**
+ * "İhlal değil" dokunuşunun sonucu.
+ *
+ * NEDEN [IhbarApproveResponse] YENİDEN KULLANILMADI: iki ucun taşıdığı alanlar
+ * farklı. Onay ucu neyin ONAYI ENGELLEDİĞİNİ anlatmak zorunda (blockingFields,
+ * problems); olumsuz dokunuşta engel diye bir şey yok — kayıt her hâlükârda
+ * memura gitmekten çıkıyor. Tek tipe sıkıştırmak, her iki tarafta da hangi
+ * alanın hangi uçta dolduğunu okuyucuya arattırırdı.
+ *
+ * [message] sunucunun kendi Türkçe cümlesi: kaydın reddedildiğini mi yoksa
+ * memurdan GERİ ÇEKİLDİĞİNİ mi söylediği oradan okunuyor. İkisi sahip için
+ * farklı şeyler ve ayrımı sunucu bizden iyi biliyor.
+ */
+@Serializable
+data class IhbarRejectResponse(
+    val state: String = "",
+    val stateLabel: String = "",
+    val matchedBy: String? = null,
+    /** Dokunuşun gerçekten yazıldığının tek kanıtı; düğmenin rengi buna bakıyor. */
+    val notViolation: Boolean = false,
     val message: String = ""
 )
 
@@ -135,6 +180,17 @@ private const val STATE_ONAYLANDI = "onaylandi"
 private const val STATE_KAPANDI = "kapandi"
 private const val STATE_REDDEDILDI = "reddedildi"
 private const val STATE_ONAYLANAMAZ = "onaylanamaz"
+
+/**
+ * Sahibin "ihlal değil" dediği kayıt.
+ *
+ * [IhbarStatusItem.notViolation] alanının YANINDA duruyor, onun yerine değil:
+ * sunucu kararı İKİ ayrı kanaldan söylüyor (medyaya çıpalanmış bayrak; ve o
+ * kararın kaydın durumunun önüne geçmesiyle bu durum adı) ve düğme ikisine
+ * birden bakıyor. Tek tanığa güvenmek, adlardan biri değiştiği gün düğmeyi
+ * sessizce nötre düşürürdü — sahip elediği videoyu yeniden elenmemiş görürdü.
+ */
+private const val STATE_IHLAL_DEGIL = "ihlal_degil"
 
 // ─── düğmenin durumu ─────────────────────────────────────────────────────────
 
@@ -168,7 +224,24 @@ enum class IhbarPhase {
     ERROR,
 
     /** Cihaz belirteci girilmemiş. SOLUK, ayara yönlendirir. */
-    NO_TOKEN
+    NO_TOKEN,
+
+    /** "İhlal değil" isteği yolda. Olumsuz düğmede çember döner. */
+    REJECTING,
+
+    /** Sahip "bu ihlal değil" dedi; kayıt memura gitmiyor. ARDUVAZ. */
+    NOT_VIOLATION,
+
+    /**
+     * "İhlal değil" isteği başarısız.
+     *
+     * NEDEN [ERROR] İLE AYNI EVRE DEĞİL: iki düğme var ve hata hangisine
+     * düşerse sahip onu tekrar deniyor. Olumsuz dokunuşun hatası olumlu düğmeye
+     * kırmızı olarak yansısaydı, sahip düzeltmek için OLUMLU düğmeye basar ve
+     * eleyeceği videoyu emniyet birimine gönderirdi. Aynı arızanın iki düğmede
+     * iki ayrı yeri olmak zorunda.
+     */
+    REJECT_ERROR
 }
 
 /**
@@ -191,7 +264,17 @@ data class IhbarMark(
     val matchedBy: String? = null
 )
 
-private fun phaseOf(state: String, humanVerified: Boolean): IhbarPhase = when (state) {
+private fun phaseOf(state: String, humanVerified: Boolean, notViolation: Boolean): IhbarPhase {
+    // OLUMSUZ DOKUNUŞ HER ŞEYİN ÖNÜNDE. Sahip "ihlal değil" dedikten sonra
+    // kaydın veritabanındaki durumu ne olursa olsun (reddedildi, kapandı, hatta
+    // geri çekilmeden önce onaylanmıştı) düğmede görülmesi gereken tek şey
+    // sahibin kendi kararı. Durum adına öncelik verseydik, geri çekilmiş bir
+    // ihbar "kapandı" diye görünür ve sahip dokunuşunun işlenmediğini sanırdı.
+    if (notViolation || state == STATE_IHLAL_DEGIL) return IhbarPhase.NOT_VIOLATION
+    return whenState(state, humanVerified)
+}
+
+private fun whenState(state: String, humanVerified: Boolean): IhbarPhase = when (state) {
     STATE_ONAYLANDI -> IhbarPhase.APPROVED
     STATE_BILINMIYOR, STATE_BEKLEMEDE -> IhbarPhase.PENDING
     STATE_ONAYLANAMAZ -> IhbarPhase.BLOCKED
@@ -208,7 +291,7 @@ private fun phaseOf(state: String, humanVerified: Boolean): IhbarPhase = when (s
 }
 
 fun IhbarStatusItem.toMark(): IhbarMark {
-    val phase = phaseOf(state, humanVerified)
+    val phase = phaseOf(state, humanVerified, notViolation)
     val label = stateLabel.ifBlank { null }
     return IhbarMark(
         phase = phase,
@@ -221,7 +304,10 @@ fun IhbarStatusItem.toMark(): IhbarMark {
 }
 
 fun IhbarApproveResponse.toMark(): IhbarMark {
-    val phase = phaseOf(state, humanVerified)
+    // Onay ucu olumsuz bayrağı taşımıyor ve taşımamalı: bu uca basmak, varsa
+    // önceki "ihlal değil" kararını ZATEN geçersiz kılar. false geçmek burada
+    // eksik bilgi değil, dokunuşun anlamının kendisi.
+    val phase = phaseOf(state, humanVerified, notViolation = false)
     // Onay ucu her dalda tam bir cümle yazıyor; kendi metnimizi üretmek,
     // sunucunun bildiğini tahmin etmek olurdu. Tek istisna engellenmiş kayıt:
     // orada somut sebep ("Açıklama çok kısa") genel cümleden daha çok işe yarar.
@@ -237,6 +323,25 @@ fun IhbarApproveResponse.toMark(): IhbarMark {
         matchedBy = matchedBy
     )
 }
+
+/**
+ * "İhlal değil" yanıtının düğmeye çevrilmesi.
+ *
+ * Bayrak yoksa [IhbarPhase.PENDING]: 200 dönmüş ama dokunuş yazılmamışsa tek
+ * sebep, videonun ihbar sisteminde henüz karşılığının olmaması. Bunu hata
+ * saymak yanlış olurdu (yapılacak bir şey yok, kayıt birazdan oluşacak), ama
+ * arduvaza boyamak daha da yanlış: sahip elemiş sanır, oysa kimse bir şey
+ * kaydetmemiştir.
+ */
+fun IhbarRejectResponse.toMark(): IhbarMark = IhbarMark(
+    phase = if (notViolation || state == STATE_IHLAL_DEGIL) {
+        IhbarPhase.NOT_VIOLATION
+    } else {
+        IhbarPhase.PENDING
+    },
+    detail = message.ifBlank { stateLabel.ifBlank { null } },
+    matchedBy = matchedBy
+)
 
 /**
  * Sunucunun alan adlarını sahibin kullandığı kelimelere çevirir.

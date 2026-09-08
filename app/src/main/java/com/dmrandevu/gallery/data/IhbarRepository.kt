@@ -11,8 +11,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
 /**
- * Trafik İhbar sunucusuyla konuşan iki uç: bir ekran dolusu videonun durumu ve
- * tek bir videonun onayı.
+ * Trafik İhbar sunucusuyla konuşan üç uç: bir ekran dolusu videonun durumu, tek
+ * bir videonun onayı ve tek bir videonun elenmesi.
  *
  * NEDEN [GalleryRepository]'ye EKLENMEDİ: o sınıfın tamamı DMRandevu'nun
  * çerezli oturumuna dayanıyor (`requireBody` 401'i oturum kaybı sayıp
@@ -75,6 +75,30 @@ class IhbarRepository(baseClient: OkHttpClient, private val settings: SettingsSt
         val body = post("/api/galeri/onayla", payload)
         json.decodeFromString<IhbarApproveResponse>(body)
     }
+
+    /**
+     * Sahibin olumsuz dokunuşu: "bu görüntü bir trafik ihlali DEĞİL".
+     *
+     * NEDEN AYRI BİR UÇ (onayla'ya bir bayrak eklenmedi): iki dokunuşun sunucu
+     * tarafındaki sonuçları hiç benzemiyor. Olumlu dokunuş kaydı memura doğru
+     * iterken, olumsuz dokunuş onu ya reddediyor ya da MEMURDAN GERİ ÇEKİYOR —
+     * ikisi ayrı yetki, ayrı denetim kaydı ve ayrı oran sınırı. Tek uçta
+     * toplansaydı, gövdedeki tek bir bayrağın kaybolması (eski istemci, bozuk
+     * JSON, yanlış varsayılan) sessizce ihbar ONAYLARDI. Ayrı yol, o hatanın
+     * mümkün olmadığı yol.
+     *
+     * Tekil, olumlu uçla aynı sebeple: toplu eleme, bir kaydırma kazasında
+     * onlarca ihbarın toptan geri çekilmesi demek olurdu.
+     *
+     * Aynı videoya ikinci kez basmak zararsız; sunucu son dokunuşu yazıyor ve
+     * zaten elenmiş kayıt için hiçbir şey değişmiyor.
+     */
+    suspend fun reject(item: IhbarItem): IhbarRejectResponse =
+        withContext(Dispatchers.IO) {
+            val payload = json.encodeToString(IhbarItem.serializer(), item)
+            val body = post("/api/galeri/ihlal-degil", payload)
+            json.decodeFromString<IhbarRejectResponse>(body)
+        }
 
     private fun post(path: String, payload: String): String {
         val token = settings.ihbarToken

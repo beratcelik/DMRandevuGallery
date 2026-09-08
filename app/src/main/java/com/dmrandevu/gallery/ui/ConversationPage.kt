@@ -110,6 +110,14 @@ fun ConversationPage(
     var captionForUrl by remember { mutableStateOf<String?>(null) }
     // Belirteci yapıştırma penceresi açık mı.
     var ihbarTokenPrompt by remember { mutableStateOf(false) }
+    // Geri çekme onayı sorulan videonun SIRASI (null: pencere kapalı).
+    //
+    // NEDEN SIRA SAKLANIYOR, mediaPager.currentPage OKUNMUYOR: pencere açıkken
+    // yatay kaydırma serbest. Onaya basıldığı anda currentPage okunsaydı, sahip
+    // pencereyi açtıktan sonra bir sonraki videoya kaydırdıysa geri çekilen
+    // ihbar HİÇ SORULMAYAN video olurdu — hem yanlış kayıt elenir hem de
+    // gerçekten elenmek istenen ihbar memura gitmeye devam ederdi.
+    var ihbarRetractIndex by remember { mutableStateOf<Int?>(null) }
     // Percentage of the running export, or null while nothing is being processed. Only one
     // action can run at a time, so a single holder covers all three buttons.
     var exportProgress by remember { mutableStateOf<Int?>(null) }
@@ -628,7 +636,7 @@ fun ConversationPage(
             if (inMark) beeps.start() else beeps.stop()
         }
 
-        // İhlal düğmesi — sahibin dokunuşu.
+        // İhlal düğmeleri — sahibin iki dokunuşu.
         //
         // YALNIZCA ihbar hesabında (trafik_cezasi) çiziliyor. Galeri iki hesap
         // geziyor; ihbar sisteminin tanıdığı hesap ise tek. Diğerinde düğme
@@ -637,24 +645,17 @@ fun ConversationPage(
         // GalleryViewModel.ihbarEnabled üzerinde.
         //
         // Ekranın altı katmanlı: eylem şeridi en altta (0-92dp), oynatma çubuğu
-        // 92dp'de, küfür işaretleme düğmesi 140dp'de. Bu düğme o an açık olan en
+        // 92dp'de, küfür işaretleme düğmesi 140dp'de. Bu yığın o an açık olan en
         // üst katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk
         // açıldığı anda ikisi üst üste binerdi.
+        //
+        // İKİ DÜĞME DE AYNI KAPININ ARKASINDA (viewModel.ihbarEnabled): olumsuz
+        // dokunuş, olumludan daha da tehlikeli bir yerde duruyor — bir kaydı
+        // memurdan geri çekebiliyor. trafykamerasi'nde gösterilmesi, ihbar
+        // sisteminde karşılığı olmayan bir videoyu geri çektirmeye çalışmak olurdu.
         if (viewModel.ihbarEnabled) {
             val ihbarMark = viewModel.ihbarMark(conversation.key, mediaPager.currentPage)
-            IhbarMarkButton(
-                mark = ihbarMark,
-                onClick = {
-                    // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
-                    // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
-                    // sormak, düğmenin tek makul davranışı.
-                    if (ihbarMark.phase == IhbarPhase.NO_TOKEN) {
-                        ihbarTokenPrompt = true
-                    } else {
-                        viewModel.markViolation(conversation, mediaPager.currentPage)
-                    }
-                },
-                onLongClick = { ihbarTokenPrompt = true },
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(
@@ -664,8 +665,55 @@ fun ConversationPage(
                             controlsShown -> 148.dp
                             else -> 92.dp
                         }
-                    )
-            )
+                    ),
+                // NEDEN 16dp (varsayılan 8 değil): iki düğme de tek dokunuşla
+                // sunucuya yazıyor ve biri ihbarı emniyete gönderirken diğeri
+                // geri çekiyor. Parmak kalınlığında bir aralık, kaydırma
+                // sırasında yanlış düğmeye çarpmayı sıradan hâle getirirdi.
+                // Yanlış basış GERİ ALINABİLİR (diğerine basınca son dokunuş
+                // kazanır) ama arada memura bir e-posta çıkmış olur.
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                // ÜSTTE OLUMSUZ, ALTTA OLUMLU: olumlu düğme aylardır ekranın bu
+                // köşesinde, alt kenardan aynı uzaklıkta duruyor. Yeni düğmeyi
+                // altına koymak, sahibin kas hafızasındaki dokunuşu bir anda
+                // "ihlal değil"e çevirirdi — üstelik geri çekmeyi tetikleyen
+                // yönde.
+                IhbarNotViolationButton(
+                    mark = ihbarMark,
+                    onClick = {
+                        if (ihbarMark.phase == IhbarPhase.NO_TOKEN) {
+                            ihbarTokenPrompt = true
+                        } else if (ihbarMark.phase == IhbarPhase.APPROVED) {
+                            // ONAYLANMIŞ KAYIT TEK İSTİSNA: burada dokunuş bir
+                            // kaydı kapatmakla kalmıyor, memura GİTMİŞ ihbarı
+                            // geri çekiyor ve karşı tarafa düzeltme bildirimi
+                            // gönderiyor. Uygulama içinde kalan yanlış basış
+                            // sahibin kendi işi; memurun gelen kutusuna düşen
+                            // yanlış basış değil — üstelik o dalda telefondan
+                            // geri dönüş yolu da yok (bkz. IhbarRetractDialog).
+                            ihbarRetractIndex = mediaPager.currentPage
+                        } else {
+                            viewModel.markNotViolation(conversation, mediaPager.currentPage)
+                        }
+                    }
+                )
+                IhbarMarkButton(
+                    mark = ihbarMark,
+                    onClick = {
+                        // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu istemeye
+                        // gidiyor: "sessizce başarısız olmak" yerine eksik olan şeyi
+                        // sormak, düğmenin tek makul davranışı.
+                        if (ihbarMark.phase == IhbarPhase.NO_TOKEN) {
+                            ihbarTokenPrompt = true
+                        } else {
+                            viewModel.markViolation(conversation, mediaPager.currentPage)
+                        }
+                    },
+                    onLongClick = { ihbarTokenPrompt = true }
+                )
+            }
         }
 
         // Dots + actions.
@@ -854,6 +902,16 @@ fun ConversationPage(
             rawMediaUrl = rawUrl,
             onSessionLost = viewModel::reportSessionLost,
             onDismiss = { captionForUrl = null }
+        )
+    }
+
+    ihbarRetractIndex?.let { index ->
+        IhbarRetractDialog(
+            onDismiss = { ihbarRetractIndex = null },
+            onConfirm = {
+                ihbarRetractIndex = null
+                viewModel.markNotViolation(conversation, index)
+            }
         )
     }
 

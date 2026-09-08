@@ -19,6 +19,13 @@ struct ConversationPageView: View {
     /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
     @State private var ihbarTokenPrompt = false
     @State private var ihbarTokenDraft = ""
+    /// Geri çekme onayı bekleyen videonun sırası, ya da pencere kapalıyken nil.
+    ///
+    /// NEDEN SIRA SAKLANIYOR DA onayda `currentIndex` OKUNMUYOR: bu sayfa bir
+    /// konuşmanın BÜTÜN videolarını taşıyor ve `currentIndex` yatay kaydırmayla
+    /// değişiyor. Pencereyi açan video ile onaylanan video ayrışırsa, sahibin
+    /// hiç bakmadığı bir ihbar memurdan geri çekilirdi.
+    @State private var ihbarRetractIndex: Int?
 
     /// Percentage of the running export, or nil while nothing is being processed. Only one action
     /// can run at a time, so a single holder covers all three buttons.
@@ -175,7 +182,7 @@ struct ConversationPageView: View {
                 }
             }
 
-            ihbarButton
+            ihbarButtons
             bottomBar
         }
         .clipped()
@@ -233,6 +240,26 @@ struct ConversationPageView: View {
             Button(Strings.cancel, role: .cancel) { ihbarTokenDraft = "" }
         } message: {
             Text(Strings.ihbarTokenExplain)
+        }
+        // NEDEN YALNIZCA ONAYLANMIŞ KAYITTA SORULUYOR: her elemede bir pencere
+        // açmak, sahibin her videoda iki dokunuş yapması demek — eleme zaten
+        // sıradan ve geri alınabilir bir karar (son dokunuş kazanır). Onaylanmış
+        // kayıt tek istisna: orada işlem geri çekmeye dönüşüyor ve bedelini
+        // uygulamanın dışında, memurun gelen kutusunda ödüyor.
+        .alert(
+            Strings.ihbarRetractTitle,
+            isPresented: Binding(
+                get: { ihbarRetractIndex != nil },
+                set: { if !$0 { ihbarRetractIndex = nil } }
+            ),
+            presenting: ihbarRetractIndex
+        ) { index in
+            Button(Strings.ihbarRetractConfirm, role: .destructive) {
+                model.markNotViolation(conversation, mediaIndex: index)
+            }
+            Button(Strings.cancel, role: .cancel) {}
+        } message: { _ in
+            Text(Strings.ihbarRetractExplain)
         }
     }
 
@@ -603,22 +630,31 @@ struct ConversationPageView: View {
         return fallback
     }
 
-    // MARK: - İhlal düğmesi
+    // MARK: - İhlal düğmeleri
 
-    /// Sahibin dokunuşu.
+    /// Sahibin iki dokunuşu: solda "ihlal", sağda "ihlal değil".
     ///
     /// Ekranın altı katmanlı: eylem şeridi en altta (0-92pt), oynatma çubuğu
-    /// 92pt'de, küfür işaretleme düğmesi 140pt'de. Bu düğme o an açık olan en üst
+    /// 92pt'de, küfür işaretleme düğmesi 140pt'de. Bu satır o an açık olan en üst
     /// katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk açıldığı anda
     /// ikisi üst üste binerdi.
+    ///
+    /// NEDEN İKİSİ AYNI SATIRDA (biri üstte biri altta değil): satırın iki ucu,
+    /// baş parmağın erişebildiği en uzak iki nokta. Alt alta iki kapsülde aradaki
+    /// mesafe kapsül yüksekliği kadar kalır ve dikeyde şaşan bir dokunuş, zıt
+    /// kararı verir.
+    ///
+    /// NEDEN İKİSİ DE AYNI ``IhbarMark``'I OKUYOR: bir videonun tek durumu var.
+    /// Ayrı durumlar tutsaydık "hem işaretli hem elenmiş" gibi imkânsız bir çift
+    /// çizilebilirdi.
     ///
     /// NEDEN GİZLEMEK, "DEVRE DIŞI BIRAKMAK" DEĞİL: ihbar hattı tek bir hesabı
     /// dinliyor (bkz. ``IhbarAccount``) ve öteki hesabın videosu orada hiçbir
     /// kayıtla eşleşmiyor. Soluk ama duran bir düğme, sahibi "neden çalışmıyor"
     /// diye uğraştırırdı; olmayan düğme ise doğru cümleyi kuruyor — bu hesap
-    /// ihbar hattına bağlı değil.
+    /// ihbar hattına bağlı değil. Bu, iki düğme için de geçerli.
     @ViewBuilder
-    private var ihbarButton: some View {
+    private var ihbarButtons: some View {
         if model.ihbarAvailable {
             VStack {
                 Spacer()
@@ -637,7 +673,32 @@ struct ConversationPageView: View {
                         },
                         onLongPress: { ihbarTokenPrompt = true }
                     )
-                    Spacer()
+                    // Aradaki boşluk süs değil: iki düğmenin sonuçları zıt ve
+                    // ekranın iki ucu, yanlış basmanın önündeki tek gerçek engel.
+                    Spacer(minLength: 24)
+                    IhbarNotViolationButton(
+                        mark: ihbarMark,
+                        onTap: {
+                            if ihbarMark.phase == .noToken {
+                                ihbarTokenPrompt = true
+                            } else if ihbarMark.phase == .approved {
+                                // ONAYLANMIŞ KAYIT AYRI: bu dokunuş artık yalnızca
+                                // bir kaydı kapatmıyor, memura GİTMİŞ bir ihbarı
+                                // geri çekiyor ve karşı tarafa bildirim gönderiyor.
+                                // Uygulama içinde kalan bir yanlış basış sahibin
+                                // kendi işi; memurun gelen kutusuna düşen yanlış
+                                // basış değil. İkinci dokunuşun bedelini ödediği
+                                // tek dal bu.
+                                ihbarRetractIndex = currentIndex
+                            } else {
+                                model.markNotViolation(conversation, mediaIndex: currentIndex)
+                            }
+                        }
+                    )
+                    // Olumlu düğmenin metni sunucudan geliyor ve uzayabiliyor.
+                    // Öncelik verilmezse satırı o doldurur, bu kapsül ezilir ve
+                    // "İhlal değil" yarım bir kelimeye iner.
+                    .layoutPriority(1)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)

@@ -302,7 +302,14 @@ final class GalleryViewModel {
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
         // sunucuda zararsız (teyit koşullu yazılıyor, dağıtım satırları tekil) ama
         // ekranda "yeniden deniyor" gibi görünürdü.
-        guard current.phase != .busy, current.phase != .verified, current.phase != .approved else {
+        //
+        // .rejecting DE ENGELLİ: olumsuz istek yoldayken olumlu isteği de yola
+        // çıkarmak, iki zıt yazmayı yarıştırmak demek. Kazananı ağ gecikmesi
+        // belirlerdi ve "son dokunuş kazanır" kuralı, tam da sahibin fikrini
+        // değiştirdiği anda yalan olurdu. Elenmiş kayda (.notViolation) basmak ise
+        // SERBEST — fikir değiştirmenin yolu bu.
+        guard current.phase != .busy, current.phase != .rejecting,
+              current.phase != .verified, current.phase != .approved else {
             return
         }
         guard ihbar.hasToken else {
@@ -323,6 +330,54 @@ final class GalleryViewModel {
             } catch {
                 // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
                 ihbarMarks[key] = IhbarMark(phase: .error)
+            }
+        }
+    }
+
+    /// Sahibin olumsuz dokunuşu: "bu görüntü bir ihlal DEĞİL".
+    ///
+    /// İki şeyi birden durduruyor: kayıt memura gitmiyor ve o video için modele
+    /// yeniden ödenmiyor. İkisi de yalnızca AÇIK bir dokunuşla oluyor —
+    /// kaydırıp geçmek hiçbir anlama gelmiyor, çünkü bu galeri aynı zamanda Reels
+    /// seçmek için geziliyor ve görülmemiş video yapay zekâ kontrolüne devam
+    /// etmeli.
+    ///
+    /// KAYIT HENÜZ YOKKEN DE ÇALIŞIYOR: sunucu, ihbarı olmayan medyada dokunuşu
+    /// medyaya çıpalayıp saklıyor (bkz. PendingHumanVerification deseni). Bu dalı
+    /// istemcide kapatsaydık, çıkarımın gecikmeli koştuğu sistemde elemelerin
+    /// ÇOĞU kaybolurdu — sahip videoyu izlediği anda basıyor, kayıt saatler sonra
+    /// açılıyor.
+    func markNotViolation(_ conversation: Conversation, mediaIndex: Int) {
+        // Düğme yanlış hesapta zaten çizilmiyor; koruma burada da duruyor çünkü
+        // eleme, onaylanmış bir kaydı memurdan geri çektirebiliyor ve tek bir
+        // görünüm koşulunun doğru yazılmış olmasına bırakılamaz.
+        guard ihbarAvailable else { return }
+        let key = Self.ihbarKey(conversation.key, mediaIndex)
+        let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
+        // Zaten elenmiş ya da yolda olan bir düğmeye yeniden basılmaz. Aynı
+        // gerekçenin aynası: olumlu istek yoldayken (.busy) bu yol da kapalı.
+        guard current.phase != .busy, current.phase != .rejecting,
+              current.phase != .notViolation else {
+            return
+        }
+        guard ihbar.hasToken else {
+            ihbarMarks[key] = IhbarMark(phase: .noToken)
+            return
+        }
+
+        ihbarMarks[key] = IhbarMark(phase: .rejecting)
+        let item = ihbarItem(for: conversation, mediaIndex: mediaIndex)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                ihbarMarks[key] = try await ihbar.reject(item).mark
+            } catch is IhbarTokenMissingError {
+                ihbarMarks[key] = IhbarMark(phase: .noToken)
+            } catch let error as IhbarError {
+                ihbarMarks[key] = IhbarMark(phase: .rejectError, detail: error.message)
+            } catch {
+                // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
+                ihbarMarks[key] = IhbarMark(phase: .rejectError)
             }
         }
     }

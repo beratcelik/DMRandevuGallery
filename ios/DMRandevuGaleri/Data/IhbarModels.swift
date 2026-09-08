@@ -86,13 +86,33 @@ struct IhbarStatusItem: Decodable {
     let stateLabel: String
     /// YEŞİL DÜĞMENİN dayandığı tek alan.
     let humanVerified: Bool
+    /// OLUMSUZ DÜĞMENİN dayandığı bayrak: sahip "bu görüntü ihlal değil" dedi.
+    ///
+    /// ADI SUNUCUDAKİNİN AYNISI. Bu dosyanın başındaki "alan adları birebir"
+    /// kuralı burada bir kez çiğnenmişti ve derleyici hiçbir şey söylemiyordu:
+    /// alan `humanRejected` diye yazılmış, oysa sunucu `notViolation` gönderiyor.
+    /// Eşleşmeyen ad sessizce false çözülür; sahibin elediği video bir sonraki
+    /// açılışta yeniden "el değmemiş" görünür ve o video daha önce teyit
+    /// edilmişse düğme YEŞİL yanardı — düzeltmeye çalıştığımız arızanın aynısı.
+    ///
+    /// NEDEN ``humanVerified`` İLE İKİ AYRI BAYRAK, ÜÇ DEĞERLİ TEK ALAN DEĞİL:
+    /// sunucuda iki damga ayrı ayrı duruyor ve olumsuz dokunuş, daha önce alınmış
+    /// bir teyidin izini silmiyor. Tek alana indirmek, "önce teyit edildi sonra
+    /// elendi" ayrımını tel üzerinde kaybetmek olurdu — o ayrım, aynı videoya iki
+    /// kez farklı cevap veren bir günü çözebilecek yegâne iz.
+    ///
+    /// Sunucu bu alanı henüz göndermiyorsa false kalıyor: eski bir sunucuya
+    /// bağlanan yeni uygulama, olmayan bir elemeyi uydurmak yerine düğmeyi nötr
+    /// bırakır — yanlış yönde hata yapmanın ucuz olanı bu. Böyle bir sunucuda
+    /// durumun kendisi (``IhbarState/ihlalDegil``) ikinci tanık olarak duruyor.
+    let notViolation: Bool
     let matchedBy: String?
     let violationCode: String?
     /// Eksik alanların onayı gerçekten ENGELLEYEN alt kümesi (il / tarih / medya).
     let blockingFields: [String]
 
     private enum CodingKeys: String, CodingKey {
-        case state, stateLabel, humanVerified, matchedBy, violationCode, blockingFields
+        case state, stateLabel, humanVerified, notViolation, matchedBy, violationCode, blockingFields
     }
 
     init(from decoder: Decoder) throws {
@@ -100,6 +120,7 @@ struct IhbarStatusItem: Decodable {
         state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
         stateLabel = try container.decodeIfPresent(String.self, forKey: .stateLabel) ?? ""
         humanVerified = try container.decodeIfPresent(Bool.self, forKey: .humanVerified) ?? false
+        notViolation = try container.decodeIfPresent(Bool.self, forKey: .notViolation) ?? false
         matchedBy = try container.decodeIfPresent(String.self, forKey: .matchedBy)
         violationCode = try container.decodeIfPresent(String.self, forKey: .violationCode)
         blockingFields = try container.decodeIfPresent([String].self, forKey: .blockingFields) ?? []
@@ -133,6 +154,47 @@ struct IhbarApproveResponse: Decodable {
         humanVerified = try container.decodeIfPresent(Bool.self, forKey: .humanVerified) ?? false
         blockingFields = try container.decodeIfPresent([String].self, forKey: .blockingFields) ?? []
         problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+    }
+}
+
+/// Olumsuz dokunuşun sonucu: "bu görüntü bir ihlal DEĞİL".
+///
+/// NEDEN ONAY YANITINDAN AYRI BİR TİP (alanların çoğu ortak olsa da): onay
+/// yanıtındaki `problems` ve `blockingFields`, kaydın onaya HAZIR OLMASI için
+/// eksik kalanları anlatıyor. Olumsuz cevapta öyle bir soru yok — kayıt zaten
+/// gitmeyecek. İki ucu tek tipte toplamak, burada hiçbir zaman dolmayacak iki
+/// alanı taşımak ve bir sonraki okuyucuya "eleme neyi engelliyor?" diye
+/// arattırmak olurdu.
+struct IhbarRejectResponse: Decodable {
+
+    let state: String
+    let stateLabel: String
+    let matchedBy: String?
+    /// Dokunuşun TUTUP TUTMADIĞI. Adı durum ucundaki bayrakla aynı: iki uç aynı
+    /// şeyi iki ayrı adla söyleseydi, hangisinin hangi cevapta geçtiğini bir
+    /// sonraki okuyucuya arattırırdı.
+    ///
+    /// false, "sunucu videoyu tanıyamadı" demek (eşleşme yok ya da belirsiz);
+    /// böyle bir cevapta düğmeyi "elendi" göstermek, sahibi bir daha hiç
+    /// basmayacağı bir yalanla baş başa bırakırdı — oysa o kayıt yapay zekâ
+    /// hattında ilerlemeye devam ediyor.
+    let notViolation: Bool
+    /// Sunucunun kendi Türkçe cümlesi. Geri çekme dalında memura bildirim
+    /// gittiğini de bu cümle söylüyor; kendi metnimizi üretmek, sunucunun
+    /// bildiğini tahmin etmek olurdu.
+    let message: String
+
+    private enum CodingKeys: String, CodingKey {
+        case state, stateLabel, matchedBy, notViolation, message
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+        stateLabel = try container.decodeIfPresent(String.self, forKey: .stateLabel) ?? ""
+        matchedBy = try container.decodeIfPresent(String.self, forKey: .matchedBy)
+        notViolation = try container.decodeIfPresent(Bool.self, forKey: .notViolation) ?? false
         message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
     }
 }
@@ -177,6 +239,16 @@ private enum IhbarState {
     static let kapandi = "kapandi"
     static let reddedildi = "reddedildi"
     static let onaylanamaz = "onaylanamaz"
+    /// Sahibin elediği video.
+    ///
+    /// BAYRAĞIN YERİNE DEĞİL, YANINDA: sunucu olumsuz kararı hem ayrı bir alanla
+    /// hem de durumun kendisiyle söylüyor ve ikisi ayrı kaynaklardan türüyor —
+    /// biri medyaya çıpalanmış karar satırı, öteki o satırın kaydın durumunun
+    /// ÖNÜNE GEÇMESİ. Yalnızca bayrağa bakmak, adı bir gün değişirse elemeyi
+    /// sessizce kaçırırdı ve bu tam olarak BİR KEZ YAŞANDI; yalnızca duruma
+    /// bakmak ise sunucu eski sürümdeyken kaçırırdı. İkisi birden bakmanın
+    /// bedeli tek bir karşılaştırma.
+    static let ihlalDegil = "ihlal_degil"
 }
 
 // MARK: - Düğmenin durumu
@@ -203,6 +275,18 @@ enum IhbarPhase {
     case error
     /// Cihaz belirteci girilmemiş. SOLUK, ayara yönlendirir.
     case noToken
+    // ── olumsuz dokunuşun evreleri ───────────────────────────────────────────
+    //
+    // NEDEN AYNI ENUM (ikinci bir "reddetme evresi" tipi değil): bir videonun
+    // TEK bir durumu var. İki ayrı eksen tutsaydık "hem teyit edilmiş hem
+    // elenmiş" gibi imkânsız bir çift kurulabilir ve iki düğme aynı anda iki zıt
+    // renk gösterirdi. Tek enum, bu çelişkiyi derleme zamanında imkânsız kılıyor.
+    /// Olumsuz istek yolda. Çember OLUMSUZ düğmede döner, ikisi de basılmaz.
+    case rejecting
+    /// Sahip "bu görüntü ihlal değil" dedi ve sunucu kaydetti. ARDUVAZ.
+    case notViolation
+    /// Olumsuz istek başarısız. KIRMIZI, tekrar denenebilir.
+    case rejectError
 }
 
 /// Bir videonun düğmesinin bildiği her şey.
@@ -221,8 +305,20 @@ struct IhbarMark: Equatable {
     var matchedBy: String? = nil
 }
 
-private func ihbarPhase(state: String, humanVerified: Bool) -> IhbarPhase {
-    switch state {
+private func ihbarPhase(state: String, humanVerified: Bool, notViolation: Bool) -> IhbarPhase {
+    // OLUMSUZ DOKUNUŞ HER ŞEYİN ÖNÜNDE — durumun kendisinin bile.
+    //
+    // "Son dokunuş kazanır" kuralını SUNUCU uyguluyor: zıt yöndeki her dokunuş
+    // öncekinin bayrağını düşürüyor, yani iki bayrak aynı anda açık dönmüyor.
+    // İSTEMCİDE İKİ DAMGANIN ZAMANINI KARŞILAŞTIRMIYORUZ: ihbar sunucusunda saat
+    // dilimi kayması bilinen ve daha önce yaşanmış bir arıza; ekranda hangi
+    // rengin yanacağını iki ISO metnini kıyaslayarak seçmek, o kaymayı galeriye
+    // taşımak olurdu. Karar kimin verdiği bellidir: sunucu.
+    if notViolation || state == IhbarState.ihlalDegil { return .notViolation }
+    // `return switch`: erken çıkış eklendiği an switch artık gövdenin tek ifadesi
+    // değil, bir deyim — örtük dönüş kalkıyor ve `.approved` gibi kısaltmalar
+    // bağlamsız kalıyor.
+    return switch state {
     case IhbarState.onaylandi: .approved
     case IhbarState.bilinmiyor, IhbarState.beklemede: .pending
     case IhbarState.onaylanamaz: .blocked
@@ -242,7 +338,9 @@ private func ihbarPhase(state: String, humanVerified: Bool) -> IhbarPhase {
 extension IhbarStatusItem {
 
     var mark: IhbarMark {
-        let phase = ihbarPhase(state: state, humanVerified: humanVerified)
+        let phase = ihbarPhase(
+            state: state, humanVerified: humanVerified, notViolation: notViolation
+        )
         let label = stateLabel.isEmpty ? nil : stateLabel
         return IhbarMark(
             phase: phase,
@@ -258,7 +356,13 @@ extension IhbarStatusItem {
 extension IhbarApproveResponse {
 
     var mark: IhbarMark {
-        let phase = ihbarPhase(state: state, humanVerified: humanVerified)
+        // notViolation: false — OLUMLU uçtan dönen cevapta eleme bayrağı yok ve
+        // olamaz: sahip az önce "bu bir ihlal" dedi, yani varsa bile önceki eleme
+        // sunucuda o dokunuşla düşmüş durumda. Durum da bu uçta hiçbir dalda
+        // 'ihlal_degil' dönmüyor, yani ikinci tanık da sessiz.
+        let phase = ihbarPhase(
+            state: state, humanVerified: humanVerified, notViolation: false
+        )
         // Onay ucu her dalda tam bir cümle yazıyor; kendi metnimizi üretmek,
         // sunucunun bildiğini tahmin etmek olurdu. Tek istisna engellenmiş kayıt:
         // orada somut sebep ("Açıklama çok kısa") genel cümleden daha çok işe yarar.
@@ -267,6 +371,28 @@ extension IhbarApproveResponse {
             phase: phase,
             detail: phase == .blocked ? (problems.first ?? sentence) : sentence,
             blockingFields: blockingFields,
+            matchedBy: matchedBy
+        )
+    }
+}
+
+extension IhbarRejectResponse {
+
+    var mark: IhbarMark {
+        let sentence = message.isEmpty ? (stateLabel.isEmpty ? nil : stateLabel) : message
+        // Dokunuş tutmadıysa arduvaz düğme YANLIŞ olurdu: video sunucuda
+        // eşleşmedi, yani hiçbir şey elenmedi. Bu ayrımı ``ihbarPhase`` veriyor —
+        // ne bayrak ne durum olumsuzu gösteriyorsa düğme sunucunun dediği yere
+        // dönüyor (ağırlıkla "bilinmiyor" → soluk) ve cümlesi altta duruyor.
+        //
+        // humanVerified: false — bu uç o bayrağı taşımıyor. Eşleşmeyen bir
+        // dokunuştan sonra düğme, bir sonraki durum sorgusuna kadar var olan bir
+        // teyidi göstermeyebilir; olmayan bir teyidi VAR göstermekten iyidir,
+        // çünkü yeşil düğme sahibi gerçekten basması gereken yerde basmaktan
+        // alıkoyar.
+        return IhbarMark(
+            phase: ihbarPhase(state: state, humanVerified: false, notViolation: notViolation),
+            detail: sentence,
             matchedBy: matchedBy
         )
     }

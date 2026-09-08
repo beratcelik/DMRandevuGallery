@@ -1,7 +1,7 @@
 import Foundation
 
-/// Trafik İhbar sunucusuyla konuşan iki uç: bir ekran dolusu videonun durumu ve
-/// tek bir videonun onayı.
+/// Trafik İhbar sunucusuyla konuşan üç uç: bir ekran dolusu videonun durumu,
+/// tek bir videonun onayı ve tek bir videonun elenmesi.
 ///
 /// NEDEN ``GalleryRepository``'ye EKLENMEDİ: o sınıfın tamamı DMRandevu'nun
 /// çerezli oturumuna dayanıyor ve 401'i "oturum bitti" sayıp kullanıcıyı giriş
@@ -60,6 +60,26 @@ final class IhbarRepository {
     func approve(_ item: IhbarItem) async throws -> IhbarApproveResponse {
         let body = try encoder.encode(item)
         return try await post("/api/galeri/onayla", body: body)
+    }
+
+    /// Sahibin olumsuz dokunuşu: "bu görüntü bir ihlal DEĞİL".
+    ///
+    /// NEDEN AYRI BİR UÇ, onayla'ya `verdict` alanı EKLEMEK DEĞİL: iki eylemin
+    /// sonuçları zıt ve sunucudaki oran sınırları da öyle olmalı. Tek uçta
+    /// toplasaydık, gövdedeki tek bir alanın yanlış kodlanması bir elemeyi
+    /// sessizce ONAYA çevirebilirdi — yani kaydı emniyet birimine yollayabilirdi.
+    /// Ayrı yol, o hatayı 404'e düşürüyor.
+    ///
+    /// NEDEN TEKİL: bu da bir dokunuş. Toplu eleme, tek hareketle bir ekran dolusu
+    /// ihbarı (aralarında memura gitmiş olanları da) kapatmak demek olurdu.
+    ///
+    /// Aynı videoya ikinci kez basmak zararsız: sunucu son dokunuşu yazıyor ve
+    /// zaten elenmiş bir kaydı yeniden elemek durumu değiştirmiyor.
+    ///
+    /// Çerez burada da gitmiyor — ``post`` her istekte kapatıyor.
+    func reject(_ item: IhbarItem) async throws -> IhbarRejectResponse {
+        let body = try encoder.encode(item)
+        return try await post("/api/galeri/ihlal-degil", body: body)
     }
 
     private func post<T: Decodable>(_ path: String, body: Data) async throws -> T {

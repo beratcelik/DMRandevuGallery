@@ -3,6 +3,7 @@ package com.dmrandevu.gallery.ui
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Flag
@@ -57,6 +59,21 @@ private val IhbarNeutral = Color.Black.copy(alpha = 0.55f)
 
 /** Yapacak bir şey yokken: kayıt henüz yok ya da belirteç girilmemiş. */
 private val IhbarMuted = Color.Black.copy(alpha = 0.4f)
+
+/**
+ * Arduvaz: sahip "bu ihlal değil" dedi.
+ *
+ * NEDEN YEŞİLİN KARŞITI KIRMIZI DEĞİL: kırmızı bu ekranda ZATEN "istek
+ * başarısız, tekrar dene" demek ([IhbarRed]). Elenmiş bir videoyu da kırmızıya
+ * boyasaydık, sahip başarıyla elediği kayda tekrar tekrar dokunurdu. Soğuk ve
+ * mat bir gri, yeşille bir bakışta ayrılıyor ve "burada yapılacak bir şey yok"
+ * diyor — söylemesi gereken de tam olarak bu.
+ *
+ * OPAK, camsı değil: basılmayı bekleyen düğme yarı saydam siyah ve videonun
+ * üstünde her karede farklı görünüyor. Kararın kaydedildiğini anlatan renk,
+ * altındaki görüntüden bağımsız olmak zorunda.
+ */
+private val IhbarSlate = Color(0xFF4A5058)
 
 /**
  * Sahibin dokunuşu.
@@ -140,6 +157,12 @@ private fun backgroundOf(phase: IhbarPhase): Color = when (phase) {
     IhbarPhase.NEEDS_INFO, IhbarPhase.BLOCKED -> IhbarAmber
     IhbarPhase.ERROR -> IhbarRed
     IhbarPhase.PENDING, IhbarPhase.NO_TOKEN -> IhbarMuted
+    // OLUMSUZ EVRELER BU DÜĞMEDE SOLUK. Elenmiş bir videoda olumlu düğme hâlâ
+    // basılabilir (geri almanın tek yolu o) ama davet etmemeli; olumsuz istek
+    // yoldayken ya da başarısız olduğunda ise buraya basmak, düzeltmeye
+    // çalışırken ihbarı emniyete göndermek demek olurdu.
+    IhbarPhase.NOT_VIOLATION, IhbarPhase.REJECTING,
+    IhbarPhase.REJECT_ERROR -> IhbarMuted
     IhbarPhase.UNKNOWN, IhbarPhase.MARKABLE, IhbarPhase.BUSY -> IhbarNeutral
 }
 
@@ -150,12 +173,22 @@ private fun iconOf(phase: IhbarPhase): ImageVector = when (phase) {
     IhbarPhase.PENDING -> Icons.Filled.HourglassEmpty
     IhbarPhase.NO_TOKEN -> Icons.Filled.Lock
     // BUSY bu dala hiç gelmiyor (yerinde çember dönüyor), ama when tam olmalı.
-    IhbarPhase.UNKNOWN, IhbarPhase.MARKABLE, IhbarPhase.BUSY -> Icons.Filled.Flag
+    // Olumsuz evrelerde de bayrak duruyor: bu düğmenin anlamı değişmiyor, tek
+    // değişen basılmaya davet etmemesi — onu da rengi söylüyor.
+    IhbarPhase.UNKNOWN, IhbarPhase.MARKABLE, IhbarPhase.BUSY,
+    IhbarPhase.NOT_VIOLATION, IhbarPhase.REJECTING,
+    IhbarPhase.REJECT_ERROR -> Icons.Filled.Flag
 }
 
 @StringRes
 private fun titleOf(phase: IhbarPhase): Int = when (phase) {
-    IhbarPhase.UNKNOWN, IhbarPhase.MARKABLE -> R.string.ihbar_mark
+    // OLUMSUZ EVRELERDE DE "İhlal olarak işaretle" YAZIYOR ve yazmalı: yanlış
+    // düğmeye basan sahibin geri alma yolu bu düğme ve üstünde ne yapacağını
+    // söyleyen bir cümle olmazsa, elediği videoyu geri getiremez. Elendiğini
+    // anlatan cümle komşusunda; iki düğmenin ikisi birden aynı şeyi söylerse
+    // hangisine basılacağı belirsizleşir.
+    IhbarPhase.UNKNOWN, IhbarPhase.MARKABLE, IhbarPhase.NOT_VIOLATION,
+    IhbarPhase.REJECTING, IhbarPhase.REJECT_ERROR -> R.string.ihbar_mark
     IhbarPhase.BUSY -> R.string.ihbar_marking
     IhbarPhase.VERIFIED -> R.string.ihbar_marked
     IhbarPhase.APPROVED -> R.string.ihbar_approved
@@ -177,6 +210,12 @@ private fun titleOf(phase: IhbarPhase): Int = when (phase) {
 @Composable
 private fun ihbarDetail(mark: IhbarMark): String? = when {
     mark.phase == IhbarPhase.NO_TOKEN -> stringResource(R.string.ihbar_no_token_detail)
+    // Olumsuz dokunuşun cümlesi ("İhbar geri çekildi") KOMŞU düğmede duruyor.
+    // İki düğmede birden yazsaydı, sahip sunucunun iki ayrı şey söylediğini
+    // sanır ve hangisinin gerçekleştiğini kestiremezdi.
+    mark.phase == IhbarPhase.NOT_VIOLATION ||
+        mark.phase == IhbarPhase.REJECTING ||
+        mark.phase == IhbarPhase.REJECT_ERROR -> null
     mark.blockingFields.isNotEmpty() -> stringResource(
         R.string.ihbar_missing_fields,
         mark.blockingFields.joinToString(", ") { ihbarFieldLabel(it) }
@@ -185,6 +224,165 @@ private fun ihbarDetail(mark: IhbarMark): String? = when {
     mark.phase == IhbarPhase.ERROR && mark.detail == null ->
         stringResource(R.string.ihbar_network_error)
     else -> mark.detail
+}
+
+/**
+ * Sahibin olumsuz dokunuşu: "bu görüntü bir trafik ihlali DEĞİL".
+ *
+ * NEDEN AÇIK BİR DÜĞME (kaydırıp geçmek değil): galeri aynı zamanda Reel
+ * seçmek için kullanılıyor. Bakılmayan ya da beğenilmeyen videolar da
+ * kaydırılıp geçiliyor; "geçtim" ile "izledim ve eledim" aynı hareket. Sessiz
+ * sinyal okusaydık, sahibin telefonu cebinde açık kaldığı bir öğleden sonra
+ * gerçek ihlaller sessizce elenirdi. Dokunmamak hiçbir şey ifade etmiyor:
+ * yapay zekâ kararını vermeye devam ediyor ve kayıt memura gidiyor.
+ *
+ * NEDEN AYRI BİR DÜĞME (aynı düğmede ikinci bir dokunuş değil): tek düğmeyi
+ * yeşilden griye çeviren bir "geçiş" davranışı, sahibin ekranda gördüğü rengi
+ * hatırlamasını gerektirirdi. İki ayrı yüzeyde iki ayrı karar var ve her ikisi
+ * de tek dokunuşla ötekine dönüyor.
+ *
+ * NEDEN [IhbarMarkButton] KADAR BÜYÜK DEĞİL: bu ikincil karar. Küçük gövde ve
+ * farklı simge, iki düğmenin yanlışlıkla birbiri sanılmasını zorlaştırıyor;
+ * aralarındaki boşluğu çağıran koyuyor (bkz. ConversationPage).
+ */
+@Composable
+fun IhbarNotViolationButton(
+    mark: IhbarMark,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val busy = mark.phase == IhbarPhase.REJECTING
+    val detail = notViolationDetail(mark)
+
+    Row(
+        modifier = modifier
+            .widthIn(max = 240.dp)
+            .background(notViolationBackgroundOf(mark.phase), RoundedCornerShape(20.dp))
+            // Sade `clickable`, `combinedClickable` değil: belirteç penceresini
+            // açan uzun basış komşu düğmede duruyor ve iki yüzeyde birden aynı
+            // gizli hareketi tanıtmak, keşfedilmesini kolaylaştırmıyor.
+            // KAPATILMIYOR (enabled = false): kapalı bir clickable dokunuşu
+            // yutmaz, altındaki video yüzeyine geçirir — istek yoldayken buraya
+            // basmak videoyu duraklatırdı.
+            .clickable { if (!busy) onClick() }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Block,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column {
+            Text(
+                text = stringResource(notViolationTitleOf(mark.phase)),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge
+            )
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Olumsuz düğmenin rengi.
+ *
+ * NEDEN `else` DALI VAR (komşusundaki when'ler tam sayarken): bu düğme yalnızca
+ * KENDİ evrelerini tanıyor. Olumlu tarafta yarın yeni bir evre belirdiğinde
+ * ("iletiliyor", "kapatıldı" …) burada yapılacak doğru şey nötr kalmaktır —
+ * derleyiciyi her yeni evrede bu dosyaya sürüklemek, olumsuz düğmeye alakasız
+ * renkler yazdırmaktan başka bir şeye yaramazdı.
+ */
+private fun notViolationBackgroundOf(phase: IhbarPhase): Color = when (phase) {
+    IhbarPhase.NOT_VIOLATION -> IhbarSlate
+    IhbarPhase.REJECT_ERROR -> IhbarRed
+    // Olumlu istek yoldayken ya da belirteç hiç yokken bu düğme de davet
+    // etmemeli: iki dokunuşun yarışması, sunucuda hangisinin sonuncu olduğunun
+    // ağ gecikmesine kalması demek.
+    IhbarPhase.BUSY, IhbarPhase.NO_TOKEN -> IhbarMuted
+    else -> IhbarNeutral
+}
+
+@StringRes
+private fun notViolationTitleOf(phase: IhbarPhase): Int = when (phase) {
+    IhbarPhase.REJECTING -> R.string.ihbar_not_violation_sending
+    IhbarPhase.NOT_VIOLATION -> R.string.ihbar_not_violation_marked
+    IhbarPhase.REJECT_ERROR -> R.string.ihbar_not_violation_error
+    else -> R.string.ihbar_not_violation
+}
+
+/**
+ * Olumsuz düğmenin alt satırı.
+ *
+ * Yalnızca olumsuz evrelerde yazı çıkıyor. Kayıt eksik bilgili ya da onaylı
+ * olduğunda sunucunun söyledikleri OLUMLU düğmeye ait; ikisinde birden
+ * göstermek, aynı cümlenin iki karara birden ait olduğu izlenimini verirdi.
+ */
+@Composable
+private fun notViolationDetail(mark: IhbarMark): String? = when (mark.phase) {
+    IhbarPhase.NOT_VIOLATION -> mark.detail
+    // Sebep sunucudan gelmediyse ağ tarafında: metni burada duruyor.
+    IhbarPhase.REJECT_ERROR -> mark.detail ?: stringResource(R.string.ihbar_network_error)
+    else -> null
+}
+
+/**
+ * Onaylanmış bir ihbarı elemeden önceki tek soru.
+ *
+ * NEDEN VAR — YANLIŞ BASIŞIN BEDELİ BU DALDA UYGULAMANIN DIŞINA ÇIKIYOR:
+ * [IhbarPhase.APPROVED] evresinde "İhlal değil" demek kaydı yalnızca kapatmıyor,
+ * memura GİTMİŞ bir ihbarı geri çekiyor ve e-postası çıkmış her memura "bu kayıt
+ * üzerinde işlem yapmayınız" bildirimi gönderiyor (sunucuda markNotViolation →
+ * retractViolation).
+ *
+ * VE O DALDA GERİ ALMA YOLU YOK: kayıt REJECTED'a düşüyor, durum makinesinde
+ * REJECTED'ın tek çıkışı PENDING_REVIEW (yönetici konsolundan "yeniden
+ * incele"). Yani sahip yeşil düğmeye tekrar bassa bile sunucu "bu kayıt bu
+ * hâliyle onaylanamaz" diyor — telefondan dönüş yok, kuruma çıkan düzeltme ise
+ * çoktan gitmiş oluyor. Diğer bütün evrelerde eleme sıradan ve gerçekten geri
+ * alınabilir bir karar (son dokunuş kazanır), o yüzden orada pencere AÇILMIYOR:
+ * her videoda iki dokunuş istemek, düğmeyi sahibin kullanmayacağı kadar
+ * yorucu yapardı.
+ */
+@Composable
+fun IhbarRetractDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.ihbar_retract_title)) },
+        text = {
+            Text(
+                text = stringResource(R.string.ihbar_retract_explain),
+                style = MaterialTheme.typography.bodySmall
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.ihbar_retract_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 /**

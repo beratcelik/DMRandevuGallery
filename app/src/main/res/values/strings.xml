@@ -82,6 +82,13 @@
     <string name="ihbar_no_token">İhbar belirteci yok</string>
     <string name="ihbar_no_token_detail">Dokunun ve cihaz belirtecini yapıştırın</string>
     <string name="ihbar_missing_fields">%1$s eksik</string>
+    <string name="ihbar_not_violation">İhlal değil</string>
+    <string name="ihbar_not_violation_sending">Eleniyor…</string>
+    <string name="ihbar_not_violation_marked">İhlal değil — elendi</string>
+    <string name="ihbar_not_violation_error">Elenemedi — dokunup tekrar deneyin</string>
+    <string name="ihbar_retract_title">Bu ihbar geri çekilsin mi?</string>
+    <string name="ihbar_retract_explain">Bu kayıt onaylandı ve memurlara iletildi. \"İhlal değil\" demek, ihbarı geri çeker ve memurlara geri çekme bildirimi gönderir.</string>
+    <string name="ihbar_retract_confirm">Geri çek</string>
     <string name="ihbar_token_title">İhbar cihaz belirteci</string>
     <string name="ihbar_token_explain">Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli.</string>
     <string name="ihbar_token_hint">tid_…</string>

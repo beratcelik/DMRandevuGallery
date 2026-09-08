@@ -404,7 +404,13 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
         // sunucuda zararsız (teyit koşullu yazılıyor, dağıtım satırları tekil)
         // ama ekranda "yeniden deniyor" gibi görünürdü.
+        //
+        // [IhbarPhase.NOT_VIOLATION] BU LİSTEDE YOK ve olmamalı: yanlışlıkla
+        // eleyen sahibin geri alma yolu tam olarak burası. Son dokunuş kazanıyor.
+        // Olumsuz istek YOLDAYKEN ise susuyoruz — iki isteğin yarışması,
+        // sunucuda hangisinin sonuncu sayılacağını ağ gecikmesine bırakırdı.
         if (current.phase == IhbarPhase.BUSY ||
+            current.phase == IhbarPhase.REJECTING ||
             current.phase == IhbarPhase.VERIFIED ||
             current.phase == IhbarPhase.APPROVED
         ) {
@@ -428,6 +434,62 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
             } catch (e: Exception) {
                 // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
                 IhbarMark(IhbarPhase.ERROR)
+            }
+        }
+    }
+
+    /**
+     * Sahibin olumsuz dokunuşu: "bu görüntü bir trafik ihlali DEĞİL".
+     *
+     * NEDEN VAR: galeriye düşen her video bir ihlal değil — reklam, kaza
+     * görüntüsü, alakasız bir kayıt da geliyor. Model bunu güvenilir biçimde
+     * ayırt edemiyor ve ayırt edemediği her karede maliyet iki yerden birden
+     * çıkıyor: memura giden geçersiz bir ihbar ve o kayıt için ikinci kez
+     * ödenen model çağrısı.
+     *
+     * NEDEN SESSİZ SİNYAL DEĞİL: galeri Reel seçmek için de kullanılıyor,
+     * kaydırıp geçmek "baktım ve eledim" demek değil. İzlenmemiş videolar yapay
+     * zekâ kontrolünden geçmeye devam ediyor; yalnızca bu düğmeye BASMAK
+     * olumsuz sinyal.
+     */
+    fun markNotViolation(conversation: Conversation, mediaIndex: Int) {
+        // Kapı olumlu dokunuştaki ile aynı ve aynı sebeple burada: çizimi
+        // gizlemek bir görünüm kararı, ama bu istek bir kaydı memurdan GERİ
+        // ÇEKEBİLİYOR — çağıranın dikkatine bırakılamaz.
+        if (!ihbarEnabled) return
+        val key = ihbarKey(conversation.key, mediaIndex)
+        val current = ihbarMark(conversation.key, mediaIndex)
+        // Zaten elenmiş ya da yolda olan düğmeye yeniden basılmaz. Onaylanmış
+        // (VERIFIED/APPROVED) kayıtlar bu listede YOK: bir ihbarı memurdan geri
+        // çekmenin tek yolu bu düğme ve sunucu o yolu (retractViolation)
+        // destekliyor.
+        if (current.phase == IhbarPhase.REJECTING ||
+            current.phase == IhbarPhase.BUSY ||
+            current.phase == IhbarPhase.NOT_VIOLATION
+        ) {
+            return
+        }
+        if (!ihbar.hasToken) {
+            ihbarMarks[key] = NO_TOKEN_MARK
+            return
+        }
+
+        ihbarMarks[key] = IhbarMark(IhbarPhase.REJECTING)
+        viewModelScope.launch {
+            ihbarMarks[key] = try {
+                ihbar.reject(ihbarItemFor(conversation, mediaIndex)).toMark()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IhbarTokenMissingException) {
+                NO_TOKEN_MARK
+            } catch (e: IhbarException) {
+                // Hata OLUMSUZ evreye yazılıyor, [IhbarPhase.ERROR]'a değil:
+                // kırmızı olumlu düğmeye düşseydi sahip tekrar denemek için
+                // ona basar ve elemek istediği videoyu emniyete gönderirdi.
+                IhbarMark(IhbarPhase.REJECT_ERROR, e.message)
+            } catch (e: Exception) {
+                // Sebep sunucudan gelmedi; metni düğmenin kendisi koyuyor.
+                IhbarMark(IhbarPhase.REJECT_ERROR)
             }
         }
     }
