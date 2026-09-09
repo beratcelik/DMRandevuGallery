@@ -69,10 +69,8 @@ class PlayerManager(
             }
     }
 
-    private val slotKeys = arrayOfNulls<String>(POOL_SIZE)
-    private val slotUrls = arrayOfNulls<String>(POOL_SIZE)
-    private val slotUsedAt = LongArray(POOL_SIZE)
-    private var clock = 0L
+    /** Which conversation each player is holding; see [SlotTable]. */
+    private val slots = SlotTable(POOL_SIZE)
 
     /** Which slot is on screen. The other one is only pre-buffering and stays effect-free. */
     private var visibleSlot = -1
@@ -85,22 +83,15 @@ class PlayerManager(
      */
     private val slotWatermark = arrayOfNulls<String>(POOL_SIZE)
 
-    /**
-     * Whether a slot has ever been handed video effects. The first call commits that player to
-     * ExoPlayer's GL pipeline for good, and the pipeline renders into a SurfaceTexture that only
-     * drains while a PlayerView is attached — so a committed player must never pre-buffer.
-     */
-    private val slotUsesGl = BooleanArray(POOL_SIZE)
-
     /** The player currently holding [key], claiming the least recently used slot if it has none. */
-    fun playerFor(key: String): ExoPlayer = players[slotFor(key)]
+    fun playerFor(key: String): ExoPlayer = players[slots.claim(key)]
 
     /**
      * The player already holding [key], or null. Unlike [playerFor] this claims nothing, so it is
      * safe to call from a polling loop that only wants to read the position.
      */
     fun playerHolding(key: String): ExoPlayer? =
-        slotKeys.indexOfFirst { it == key }.takeIf { it >= 0 }?.let { players[it] }
+        slots.holding(key).takeIf { it >= 0 }?.let { players[it] }
 
     /** Holds or resumes the video on screen. */
     fun setPaused(key: String, paused: Boolean) {
@@ -123,23 +114,9 @@ class PlayerManager(
         playerHolding(key)?.setPlaybackSpeed(speed)
     }
 
-    private fun slotFor(key: String): Int {
-        val existing = slotKeys.indexOfFirst { it == key }
-        if (existing >= 0) {
-            slotUsedAt[existing] = ++clock
-            return existing
-        }
-        var lru = 0
-        for (i in 1 until POOL_SIZE) if (slotUsedAt[i] < slotUsedAt[lru]) lru = i
-        slotKeys[lru] = key
-        slotUrls[lru] = null // repurposed: whatever it held is no longer loaded for this key
-        slotUsedAt[lru] = ++clock
-        return lru
-    }
-
     /** Loads [url] on this conversation's player and starts it, pausing every other player. */
     fun play(key: String, url: String) {
-        val index = slotFor(key)
+        val index = slots.claim(key)
         visibleSlot = index
         load(index, url, watermarkHandle)
         players.forEachIndexed { i, other -> if (i != index) other.playWhenReady = false }
@@ -156,8 +133,12 @@ class PlayerManager(
      * frame, because [play] loads the slot properly when it arrives on screen.
      */
     fun preload(key: String, url: String) {
-        val index = slotFor(key)
-        if (slotUsesGl[index]) return
+        // Asked before claiming, which is the whole point of [SlotTable.wouldServe]. Claiming
+        // first and backing out afterwards left the slot assigned to a conversation whose video
+        // was never loaded, having evicted the one on screen — whose view then bound to a player
+        // with nothing prepared and showed black, with no error anywhere to say why.
+        if (slots.usesGlAt(slots.wouldServe(key))) return
+        val index = slots.claim(key)
         players[index].playWhenReady = false
         load(index, url, watermark = null)
     }
@@ -173,17 +154,17 @@ class PlayerManager(
     private fun load(index: Int, url: String, watermark: String?) {
         val player = players[index]
         val failed = player.playerError != null
-        if (slotUrls[index] == url && slotWatermark[index] == watermark && !failed) return
+        if (slots.urlAt(index) == url && slotWatermark[index] == watermark && !failed) return
 
         // Toggling the watermark re-prepares the player, and should not cost the operator their
         // place in the video they were watching.
-        val resumeAt = if (slotUrls[index] == url && !failed) player.currentPosition else 0L
+        val resumeAt = if (slots.urlAt(index) == url && !failed) player.currentPosition else 0L
 
         // Only ever called when there is something to say. The first call is what commits this
         // player to the GL pipeline, so a slot that has never carried a watermark is left on the
         // plain decoder path, where having no surface attached costs nothing.
         if (watermark != null || slotWatermark[index] != null) {
-            slotUsesGl[index] = true
+            slots.markUsesGl(index)
             player.setVideoEffects(
                 if (watermark == null) emptyList()
                 else listOf(OverlayEffect(listOf(WanderingWatermark(watermark))))
@@ -192,7 +173,7 @@ class PlayerManager(
 
         player.setMediaItem(MediaItem.fromUri(url), resumeAt)
         player.prepare()
-        slotUrls[index] = url
+        slots.setUrl(index, url)
         slotWatermark[index] = watermark
     }
 
@@ -210,7 +191,7 @@ class PlayerManager(
         if (watermarkHandle == handle) return
         watermarkHandle = handle
         val index = visibleSlot.takeIf { it >= 0 } ?: return
-        val url = slotUrls[index] ?: return
+        val url = slots.urlAt(index) ?: return
         val resume = players[index].playWhenReady
         load(index, url, handle)
         players[index].playWhenReady = resume
