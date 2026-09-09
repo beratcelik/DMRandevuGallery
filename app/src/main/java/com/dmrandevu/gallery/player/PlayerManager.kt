@@ -171,6 +171,10 @@ class PlayerManager(
             )
         }
 
+        // Re-prepared even when only the watermark changed. Skipping it was tried, on the
+        // hope that effects could be swapped on a running player: the black gap went away and so
+        // did the watermark, on that toggle and on every one after it. They really do only take
+        // hold at prepare().
         player.setMediaItem(MediaItem.fromUri(url), resumeAt)
         player.prepare()
         slots.setUrl(index, url)

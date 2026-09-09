@@ -304,6 +304,13 @@ fun ConversationPage(
                                 useController = false
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 setBackgroundColor(android.graphics.Color.BLACK)
+                                // Hold the last frame while the player is re-prepared instead of
+                                // blanking to black. Toggling the watermark has to re-prepare —
+                                // effects only take hold at prepare() — and without this the
+                                // picture drops out for the two to four seconds that takes,
+                                // which reads as the video having broken rather than a filter
+                                // having been switched.
+                                setKeepContentOnPlayerReset(true)
                                 layoutParams = ViewGroup.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT,
                                     ViewGroup.LayoutParams.MATCH_PARENT
