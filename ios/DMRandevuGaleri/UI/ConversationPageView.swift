@@ -658,7 +658,35 @@ struct ConversationPageView: View {
         if model.ihbarAvailable {
             VStack {
                 Spacer()
-                HStack {
+                // DİKEY YERLEŞİM — Android ile AYNI karar, ve iOS bu kararı
+                // almadığı için düğmeler dar ekranda sıkışıyordu.
+                //
+                // NEDEN YAN YANA DEĞİL: iki etiket de uzun ("İhlal olarak
+                // işaretle" / "İhlal değil") ve olumlu düğmenin metni SUNUCUDAN
+                // geliyor, yani daha da uzayabiliyor. Aynı satıra sığdırmak
+                // ikisini birden eziyordu; layoutPriority yalnızca hangisinin
+                // önce ezileceğini seçiyordu, ezilmeyi engellemiyordu.
+                //
+                // NEDEN OLUMSUZ ÜSTTE: olumlu düğmenin alt kenardan uzaklığı
+                // sabit kalsın. Başparmak oraya alışıyor; olumluyu yukarı
+                // itmek, kas hafızasıyla basan birinin yanlış düğmeye
+                // dokunması demekti.
+                VStack(alignment: .leading, spacing: 16) {
+                    IhbarNotViolationButton(
+                        mark: ihbarMark,
+                        onTap: {
+                            if ihbarMark.phase == .noToken {
+                                ihbarTokenPrompt = true
+                            } else if ihbarMark.phase == .approved {
+                                // ONAYLANMIŞ KAYIT AYRI: bu dokunuş artık yalnızca
+                                // bir kaydı kapatmıyor, memura GİTMİŞ bir ihbarı
+                                // geri çekiyor ve karşı tarafa bildirim gönderiyor.
+                                ihbarRetractIndex = currentIndex
+                            } else {
+                                model.markNotViolation(conversation, mediaIndex: currentIndex)
+                            }
+                        }
+                    )
                     IhbarMarkButton(
                         mark: ihbarMark,
                         onTap: {
@@ -673,33 +701,8 @@ struct ConversationPageView: View {
                         },
                         onLongPress: { ihbarTokenPrompt = true }
                     )
-                    // Aradaki boşluk süs değil: iki düğmenin sonuçları zıt ve
-                    // ekranın iki ucu, yanlış basmanın önündeki tek gerçek engel.
-                    Spacer(minLength: 24)
-                    IhbarNotViolationButton(
-                        mark: ihbarMark,
-                        onTap: {
-                            if ihbarMark.phase == .noToken {
-                                ihbarTokenPrompt = true
-                            } else if ihbarMark.phase == .approved {
-                                // ONAYLANMIŞ KAYIT AYRI: bu dokunuş artık yalnızca
-                                // bir kaydı kapatmıyor, memura GİTMİŞ bir ihbarı
-                                // geri çekiyor ve karşı tarafa bildirim gönderiyor.
-                                // Uygulama içinde kalan bir yanlış basış sahibin
-                                // kendi işi; memurun gelen kutusuna düşen yanlış
-                                // basış değil. İkinci dokunuşun bedelini ödediği
-                                // tek dal bu.
-                                ihbarRetractIndex = currentIndex
-                            } else {
-                                model.markNotViolation(conversation, mediaIndex: currentIndex)
-                            }
-                        }
-                    )
-                    // Olumlu düğmenin metni sunucudan geliyor ve uzayabiliyor.
-                    // Öncelik verilmezse satırı o doldurur, bu kapsül ezilir ve
-                    // "İhlal değil" yarım bir kelimeye iner.
-                    .layoutPriority(1)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
             }
