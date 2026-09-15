@@ -43,6 +43,8 @@ enum Strings {
     static let reels = "Reels"
     static let instagramMissing = "Instagram yüklü değil"
     static let reelsReady = "Video galeriye kaydedildi, caption kopyalandı — Reels'te videoyu seçip caption'ı yapıştırın"
+    static let reelsComposerReady = "Reels açılıyor — caption panoda, yapıştırmanız yeterli"
+    static let reelsComposerNoCaption = "Reels açılıyor — caption üretilemedi"
     static let reelsReadyNoCaption = "Video galeriye kaydedildi — caption üretilemedi, Reels'te videoyu seçin"
     static let photosDenied = "Fotoğraflar erişimi yok — Ayarlar'dan izin verin"
 

@@ -92,6 +92,43 @@ class Downloader(
         }
     }
 
+    /**
+     * Zaten dışa aktarılmış bir dosyayı galeriye yazar.
+     *
+     * [saveToGallery]'den farkı ikinci bir DIŞA AKTARMA yapmaması: elindeki baytları
+     * kopyalıyor. Reels yolu videoyu hem besteciye veriyor hem galeriye bırakıyor, çünkü
+     * Instagram kimliği bestecinin içinde doğruluyor ve reddettiğini bize söylemiyor —
+     * galerideki kopya, o sessiz reddin tek telafisi. İki ayrı dışa aktarma çağırmak,
+     * bulanıklaştırmayı ve bip geçişini ikinci kez koşturmak olurdu.
+     */
+    suspend fun saveFileToGallery(file: File, clientName: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, fileName(clientName))
+                put(MediaStore.Video.Media.MIME_TYPE, MIME_TYPE)
+                put(
+                    MediaStore.Video.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_MOVIES + "/DMRandevu"
+                )
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+            val collection =
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return@withContext false
+            try {
+                file.inputStream().use { source -> copyInto(uri, source) }
+                values.clear()
+                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                true
+            } catch (e: Exception) {
+                // Yarım yazılmış bir girdi galeride görünmesin.
+                runCatching { resolver.delete(uri, null, null) }
+                false
+            }
+        }
+
     /** Downloads to cacheDir/share so the file can be handed to Instagram via FileProvider. */
     suspend fun downloadForShare(
         rawUrl: String,

@@ -75,15 +75,22 @@ Two things gate it, and neither is visible from inside this app:
 - **Leave Google Play Package Name empty** in the Meta dashboard unless the build is actually
   public on Play. Meta's compliance crawler fails an unreachable one and can degrade the app.
 
-`REELS_COMPOSER_ENABLED` / `reelsComposerEnabled` switches the composer path on and is currently
-`true`. Turning it off returns to the older route: export, save to the phone gallery, copy the
-caption, open Instagram, pick the video by hand.
+Both Reels buttons — the one in the bottom bar and "Reels olarak paylaş" in the caption sheet —
+export the video, put the generated caption on the clipboard and then open the composer. The
+bottom-bar one **also drops a copy in the phone gallery** on the way, without exporting twice.
 
-That fallback is also the recovery path if Instagram refuses the ID, because **it cannot be
-detected from here**. `openReelComposer` returns false only when Instagram does not answer the
-intent at all; a rejection happens inside the composer, after the hand-off has already
-succeeded, and the composer route never writes to the phone gallery — so the operator is left
-with an error dialog and nothing to pick.
+That copy is the recovery path, because a refused App ID **cannot be detected from here**.
+`openReelComposer` returns false only when Instagram does not answer the intent at all; a
+rejection happens inside the composer, after the hand-off has already succeeded. Without the
+gallery copy the operator would be left with an error dialog and nothing to pick.
+
+`REELS_COMPOSER_ENABLED` / `reelsComposerEnabled` gates the caption sheet's button only. The
+bottom-bar button always tries the composer and falls back to opening Instagram plain, where the
+video is waiting in the gallery.
+
+No Instagram hand-off accepts a caption on any surface, the Reels composer included, which is
+why the caption is generated first and travels via the clipboard — Instagram is only opened once
+there is something to paste.
 
 Stories has no ID-free path at all, which is why it was the button that showed Instagram's
 complaint first. No Instagram share intent accepts a caption on any surface, which is why

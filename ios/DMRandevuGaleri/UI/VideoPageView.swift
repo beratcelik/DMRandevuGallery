@@ -49,6 +49,8 @@ struct VideoPageView: View {
     @State private var downloading = false
     @State private var sharingStory = false
     @State private var sharingReels = false
+    /// Reels akışının caption aşamasında mıyız: yüzde bittikten sonraki uzun bekleme.
+    @State private var captioning = false
     @State private var captionForURL: String?
     /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
     @State private var ihbarTokenPrompt = false
@@ -901,7 +903,10 @@ struct VideoPageView: View {
             ActionButton(
                 identifier: "actionReels",
                 icon: "film",
-                label: percent(sharingReels, Strings.reels),
+                // DIŞA AKTARMA BİTİNCE ETİKET SUSMUYOR: caption çağrısı 90 saniyeye kadar
+            // sürebiliyor ve yüzde sıfırlandığı an düğme "Reels" yazan boş bir dönece
+            // düşüyordu — en uzun aşama, hakkında en az şey söylenen aşamaydı.
+            label: captioning ? Strings.captionGenerating : percent(sharingReels, Strings.reels),
                 busy: sharingReels,
                 enabled: currentRawURL != nil && !exporting,
                 action: shareToReels
@@ -1128,33 +1133,13 @@ struct VideoPageView: View {
         Task {
             defer {
                 sharingReels = false
+                captioning = false
                 exportProgress = nil
             }
             do {
-                // KENDİ META KİMLİĞİMİZ ALINDIĞINDA burası devreye giriyor: video
-                // fotoğraflara hiç uğramadan Reels bestecisine gidiyor. Bugün kapalı;
-                // gerekçesi InstagramSharing.reelsComposerEnabled başlığında.
-                if InstagramSharing.reelsComposerEnabled {
-                    let file = try await downloader.downloadForShare(
-                        rawURL: rawURL,
-                        clientName: conversation.clientName,
-                        options: model.exportOptions(
-                            conversationKey: conversation.key, mediaIndex: currentIndex
-                        )
-                    ) { exportProgress = $0 }
-                    exportProgress = nil
-                    // Caption besteciye de geçmiyor — hiçbir Instagram girişi metin kabul
-                    // etmiyor — yani pano yine tek yol.
-                    if let caption = try await captionOrNil(rawURL), !caption.isEmpty {
-                        InstagramSharing.copyCaption(caption)
-                    }
-                    if InstagramSharing.openReelComposer(video: file) { return }
-                    // Besteci adresi karşılamadı: bilinen yola düşülüyor.
-                }
-
-                // Saved to the photo library rather than handed over directly, because Reels can
-                // only take a video the operator picks there.
-                let saved = try await downloader.saveToPhotos(
+                // SIRA: hazırla, caption'ı panoya koy, SONRA devret. Caption hazır
+                // olmadan Instagram'a geçmek, yapıştıracak bir şey olmadan geçmek demek.
+                let file = try await downloader.downloadForShare(
                     rawURL: rawURL,
                     clientName: conversation.clientName,
                     // KUSUR DÜZELTİLDİ: argümansız çağrı, elle konan küfür
@@ -1165,15 +1150,36 @@ struct VideoPageView: View {
                     )
                 ) { exportProgress = $0 }
                 exportProgress = nil
-                guard saved else {
-                    model.toast = Strings.downloadFailed
-                    return
-                }
+
+                // FOTOĞRAFLARA DA BIRAKILIYOR, ikinci bir dışa aktarma olmadan: besteci
+                // açıldıktan sonra Instagram kimliği reddederse bunu bize SÖYLEMİYOR ve
+                // fotoğraflardaki kopya o sessiz reddin tek telafisi. İzin verilmemişse
+                // akış durmuyor — besteci videoyu zaten kendisi taşıyor.
+                var saved = true
+                do { try await PhotoLibrarySaver.save(file) } catch { saved = false }
+
+                captioning = true
                 let caption = try await captionOrNil(rawURL)
-                let hasCaption = !(caption ?? "").isEmpty
+                captioning = false
+                let hasCaption = !(caption ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 if let caption, hasCaption { InstagramSharing.copyCaption(caption) }
-                model.toast = hasCaption ? Strings.reelsReady : Strings.reelsReadyNoCaption
-                _ = InstagramSharing.openInstagram()
+
+                // ÖNCE BESTECİ, sonra uygulama.
+                let inComposer = InstagramSharing.openReelComposer(video: file)
+                let opened = inComposer || InstagramSharing.openInstagram()
+
+                // MESAJ YALNIZCA SÖYLEYECEK BİR ŞEY VARSA. iOS'un uygulama üstü bildirimi
+                // yok; ToastView uygulamanın İÇİNDE çiziliyor ve bir sonraki satır
+                // uygulamayı arka plana atıyor, yani devir başarılıysa kurulan mesaj hiç
+                // okunmuyordu. Android'in sistem Toast'ı Instagram'ın üstünde durduğu için
+                // orada aynı sorun yok. Geriye okunabilecek tek hâl kalıyor: devredilemedi.
+                if !opened {
+                    model.toast = Strings.instagramMissing
+                } else if !inComposer && !hasCaption {
+                    // Uygulamaya düşüldü ve pano boş: operatörün Reels'te ne yapacağını
+                    // bilmesi gerekiyor, ve bu mesaj geri döndüğünde hâlâ duruyor olabilir.
+                    model.toast = saved ? Strings.reelsReadyNoCaption : Strings.downloadFailed
+                }
             } catch is UnauthorizedError {
                 model.reportSessionLost()
             } catch is VideoExporter.ExportFailedError {
@@ -1201,6 +1207,10 @@ struct VideoPageView: View {
         } catch is UnauthorizedError {
             throw UnauthorizedError()
         } catch {
+            // Android ikizi bunu logcat'e yazıyor; burada da bir iz kalsın, yoksa
+            // "caption üretilemedi" cümlesinin sebebi iki platformda iki ayrı yerde
+            // aranır ve birinde hiç bulunmaz.
+            print("GalleryCaption: reels caption failed — \(error)")
             return nil
         }
     }

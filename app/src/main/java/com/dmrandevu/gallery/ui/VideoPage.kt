@@ -140,6 +140,8 @@ fun VideoPage(
     var downloading by remember { mutableStateOf(false) }
     var sharingStory by remember { mutableStateOf(false) }
     var sharingReels by remember { mutableStateOf(false) }
+    // Reels akışının caption aşamasında mıyız: yüzde bittikten sonraki uzun bekleme.
+    var captioningReels by remember { mutableStateOf(false) }
     var captionForUrl by remember { mutableStateOf<String?>(null) }
     // Belirteci yapıştırma penceresi açık mı.
     var ihbarTokenPrompt by remember { mutableStateOf(false) }
@@ -1167,11 +1169,21 @@ fun VideoPage(
                     }
                 }
 
-                // Reels takes the video directly; the caption can only ride the clipboard,
-                // so it is generated first and the operator pastes it in the composer.
+                // Videoyu Instagram'a VERMİYOR: galeriye kaydedip uygulamayı açıyor,
+                // operatör Reels'te oradan seçiyor. Videoyu doğrudan besteciye veren
+                // düğme caption sayfasındaki "Reels olarak paylaş". Caption her iki
+                // yolda da panodan gidiyor; hiçbir Instagram girişi metin kabul etmiyor.
                 ActionButton(
                     icon = Icons.Filled.Theaters,
-                    label = exportProgress.percentWhen(sharingReels, R.string.reels),
+                    // DIŞA AKTARMA BİTİNCE ETİKET SUSMUYOR: caption çağrısı 90 saniyeye
+                    // kadar sürebiliyor ve yüzde sıfırlandığı an düğme "Reels" yazan boş
+                    // bir dönece düşüyordu — en uzun aşama, hakkında en az şey söylenen
+                    // aşamaydı.
+                    label = if (captioningReels) {
+                        stringResource(R.string.caption_generating)
+                    } else {
+                        exportProgress.percentWhen(sharingReels, R.string.reels)
+                    },
                     busy = sharingReels,
                     enabled = currentRawUrl != null && !exporting
                 ) {
@@ -1183,52 +1195,51 @@ fun VideoPage(
                     sharingReels = true
                     scope.launch {
                         try {
-                            // KENDİ META KİMLİĞİMİZ ALINDIĞINDA burası devreye giriyor:
-                            // video galeriye hiç uğramadan Reels bestecisine gidiyor.
-                            // Bugün kapalı; gerekçesi
-                            // InstagramSharing.REELS_COMPOSER_ENABLED başlığında.
-                            if (InstagramSharing.REELS_COMPOSER_ENABLED) {
-                                val file = downloader.downloadForShare(
-                                    rawUrl,
-                                    conversation.clientName,
-                                    viewModel.exportOptions(conversation.key, page.mediaIndex)
-                                ) { exportProgress = it }
-                                exportProgress = null
-                                // Caption besteciye de geçmiyor — hiçbir Instagram girişi
-                                // metin kabul etmiyor — yani pano yine tek yol.
-                                captionOrNull(repository, conversation, rawUrl)?.let {
-                                    InstagramSharing.copyCaption(context, it)
-                                }
-                                if (InstagramSharing.openReelComposer(context, file)) {
-                                    return@launch
-                                }
-                                // Besteci niyeti karşılamadı: bilinen yola düşülüyor.
-                            }
-
-                            // KAYDIN BAŞARISI OKUNUYOR. Eskiden dönüş değeri atılıyordu ve
-                            // indirme düştüğünde bile "video galeriye kaydedildi" yazıp
-                            // Instagram açılıyordu: operatör orada seçecek bir video
-                            // bulamıyordu. "Reels düğmesi çalışmıyor" tam olarak bu.
-                            val saved = downloader.saveToGallery(
+                            // SIRA: hazırla, caption'ı panoya koy, SONRA devret.
+                            // Sahibin istediği bu; caption hazır olmadan Instagram'a
+                            // geçmek, yapıştıracak bir şey olmadan geçmek demek.
+                            val file = downloader.downloadForShare(
                                 rawUrl,
                                 conversation.clientName,
                                 viewModel.exportOptions(conversation.key, page.mediaIndex)
                             ) { exportProgress = it }
                             exportProgress = null
-                            if (!saved) {
-                                Toast.makeText(context, R.string.download_failed, Toast.LENGTH_LONG)
-                                    .show()
-                                return@launch
+
+                            // GALERİYE DE BIRAKILIYOR, ikinci bir dışa aktarma olmadan.
+                            // Besteci açıldıktan sonra Instagram kimliği reddederse bunu
+                            // bize SÖYLEMİYOR; operatör hata penceresiyle kalıyor ve
+                            // galerideki kopya o sessiz reddin tek telafisi oluyor.
+                            val saved = downloader.saveFileToGallery(file, conversation.clientName)
+
+                            captioningReels = true
+                            val caption = try {
+                                captionOrNull(repository, conversation, rawUrl)
+                            } finally {
+                                captioningReels = false
                             }
-                            val caption = captionOrNull(repository, conversation, rawUrl)
                             val hasCaption = !caption.isNullOrBlank()
                             if (hasCaption) InstagramSharing.copyCaption(context, caption!!)
+
+                            // ÖNCE BESTECİ, sonra uygulama. Besteci niyeti hiç
+                            // karşılanmazsa (eski Instagram, kaldırılmış paket) uygulamayı
+                            // açmak hâlâ bir şeye yarıyor: video galeride duruyor.
+                            //
+                            // AÇILMADIYSA BAŞARILI DENMİYOR: isInstalled dakikalar önce,
+                            // dışa aktarmadan da önce bakıyor ve dondurulmuş bir pakette
+                            // bile doğru diyor.
+                            val inComposer = InstagramSharing.openReelComposer(context, file)
+                            val opened = inComposer || InstagramSharing.openInstagram(context)
                             Toast.makeText(
                                 context,
-                                if (hasCaption) R.string.reels_ready else R.string.reels_ready_no_caption,
+                                when {
+                                    !opened -> R.string.instagram_missing
+                                    inComposer && hasCaption -> R.string.reels_composer_ready
+                                    inComposer -> R.string.reels_composer_no_caption
+                                    hasCaption && saved -> R.string.reels_ready
+                                    else -> R.string.reels_ready_no_caption
+                                },
                                 Toast.LENGTH_LONG
                             ).show()
-                            InstagramSharing.openInstagram(context)
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
                         } catch (e: VideoExporter.ExportFailedException) {
@@ -1241,10 +1252,16 @@ fun VideoPage(
                                 },
                                 Toast.LENGTH_LONG
                             ).show()
+                        } catch (e: CancellationException) {
+                            // Sayfadan ayrılmak kapsamı iptal ediyor. Bu bir arıza değil,
+                            // operatörün kendi kaydırması; "paylaşım başarısız" demek
+                            // olmayan bir hatayı bildirmek olurdu.
+                            throw e
                         } catch (e: Exception) {
                             Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
                         } finally {
                             sharingReels = false
+                            captioningReels = false
                             exportProgress = null
                         }
                     }

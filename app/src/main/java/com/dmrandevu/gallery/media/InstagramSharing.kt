@@ -39,16 +39,17 @@ object InstagramSharing {
     const val META_APP_ID = "1059486250258693"
 
     /**
-     * Reels bestecisini doğrudan açmayı dene.
+     * Reels bestecisini doğrudan açmayı dene. AÇIK.
      *
-     * AÇIK. Kapalıyken video önce galeriye kaydediliyor ve Reels'te elle seçiliyordu; artık
-     * besteci doğrudan açılıyor.
+     * KİMİ ETKİLİYOR: yalnızca caption sayfasındaki "Reels olarak paylaş". Alt sıradaki Reels
+     * düğmesi bu bayrağa BAKMIYOR — o, videoyu galeriye kaydedip Instagram uygulamasını açıyor
+     * ve operatör videoyu orada seçiyor. İkisinin ayrı olması sahibin kararı.
      *
      * BİLİNEN RİSK: Instagram kimliği bestecinin İÇİNDE doğruluyor ve reddettiğini bize
      * SÖYLEMİYOR. [openReelComposer] yalnızca "Instagram bu niyeti hiç karşılamadı" durumunda
-     * false dönüyor; kimlik reddedilirse niyet karşılanmış sayılıyor, operatör Instagram'da bir
-     * hata penceresiyle kalıyor ve video galeride DEĞİL (besteci yolu oraya hiç yazmıyor).
-     * O hâlde bu bayrağı kapatmak bilinen yola geri döndürüyor.
+     * false dönüyor; kimlik reddedilirse niyet karşılanmış sayılıyor ve operatör Instagram'da
+     * bir hata penceresiyle kalıyor. Bayrağı kapatmak caption sayfasını genel paylaşım
+     * yoluna düşürüyor; videoyu galeride isteyen yol her hâlükârda alt sıradaki düğme.
      */
     const val REELS_COMPOSER_ENABLED = true
 
@@ -82,14 +83,15 @@ object InstagramSharing {
      * Opens Instagram so a Reel can be created from a video already sitting in the phone's
      * gallery, with the caption waiting on the clipboard.
      *
-     * Reels bestecisi bu yoldan AÇILMIYOR ve bunun sebebi bir Meta onayı değil: `ADD_TO_REEL`
-     * kendi Meta uygulama kimliğimizi istiyor, elimizdeki kimlik bizim değil ve Instagram
-     * tanımadığı kimlikle gelen paylaşımı kendi penceresinde reddediyor (Instagram 444.x
-     * üzerinde bu uygulamadan, doğrudan bileşen açarak ve kabuktan denendi). Instagram'ın
-     * paylaşım hedefleri de kaçış yolu değil — Samsung'un paylaşım sayfası hepsini tek bir
-     * girdiye indiriyor ve Direct'e düşürüyor. Bu yüzden video önce galeriye kaydediliyor ve
-     * Reels'te oradan seçiliyor. Kendi kimliğimiz alındığında [REELS_COMPOSER_ENABLED]
-     * açılarak besteci yolu devreye giriyor; ayrıntısı [META_APP_ID] başlığında.
+     * Besteciyi AÇMIYOR, uygulamayı açıyor — ve bu bir eksiklik değil, alt sıradaki Reels
+     * düğmesinin istenen davranışı: önce hazırlık (video galeride, caption panoda), sonra
+     * uygulama. Operatör videoyu Reels'te kendisi seçiyor ve Instagram'ın kendi düzenleme
+     * adımlarını kullanabiliyor.
+     *
+     * Videoyu doğrudan besteciye veren yol [openReelComposer]; onu caption sayfasındaki
+     * "Reels olarak paylaş" kullanıyor. Instagram'ın genel paylaşım hedefleri ise kaçış yolu
+     * değil: Samsung'un paylaşım sayfası hepsini tek bir girdiye indiriyor ve Direct'e
+     * düşürüyor.
      */
     fun openInstagram(context: Context): Boolean {
         val launch = context.packageManager.getLaunchIntentForPackage(PACKAGE) ?: return false

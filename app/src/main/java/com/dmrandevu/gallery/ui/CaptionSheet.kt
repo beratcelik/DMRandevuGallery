@@ -201,6 +201,11 @@ fun CaptionSheet(
                                         .takeIf { settings.watermark && it.isNotBlank() },
                                     censorAudio = settings.censorAudio,
                                     censorInsults = settings.censorInsults,
+                                    // ELLE İŞARETLEME KİPİ DE GEÇİYOR. Atlandığında varsayılan
+                                    // false oluyordu: operatör "elle" kipini seçip küfürleri
+                                    // kendi işaretlediği hâlde bu sayfadan paylaştığında video
+                                    // baştan taranıyordu — iOS ikizi geçiriyordu, burası değil.
+                                    censorByHand = settings.censorByHand,
                                     // The sheet has no view model, so the marks are read the
                                     // same way the toggles are — straight from the store.
                                     manualWindows = ServiceLocator.manualMarks.forMedia(
