@@ -146,7 +146,46 @@ enum InstagramSharing {
     @MainActor
     static func copyCaption(_ caption: String) {
         UIPasteboard.general.string = caption
+        pendingCaption = (caption, Date(), UIPasteboard.general.changeCount)
     }
+
+    /// En son devredilen caption ve devredildiği an.
+    ///
+    /// NEDEN SAKLANIYOR: iOS'ta caption'ın Instagram'a KADAR gitmesinin garantisi yok.
+    /// Videoyu besteciye taşıyan şey panonun kendisi ve pano bir kez `setItems` ile
+    /// değiştirildikten sonra Instagram'ın onu tüketip temizlemesi bizim elimizde değil.
+    /// Devirden sonra gecikmeli ikinci bir yazma da denendi ve yetmedi.
+    ///
+    /// Bu yüzden panonun hayatta kalmasına bel bağlanmıyor: metin burada duruyor ve
+    /// operatör uygulamaya döndüğü an yeniden kopyalanıyor. Uygulama önde olduğunda panoya
+    /// yazmak her zaman çalışıyor — sorunlu olan tek şey arada başka bir uygulamanın ne
+    /// yaptığı ve o da artık yolun üstünde değil.
+    private(set) static var pendingCaption: (text: String, at: Date, changeCount: Int)?
+
+    /// Uygulamaya dönüldüğünde caption'ı panoya geri koyar; koyduysa metni döndürür.
+    ///
+    /// PENCERE SINIRLI: yarım saat sonra uygulamayı açan birinin panosunu, o sırada ne
+    /// kopyalamış olursa olsun, unutulmuş bir caption'la ezmek olurdu.
+    @MainActor
+    static func restoreCaptionOnReturn() -> String? {
+        guard let pending = pendingCaption else { return nil }
+        guard Date().timeIntervalSince(pending.at) < captionRestoreWindow else {
+            pendingCaption = nil
+            return nil
+        }
+        // PANONUN İÇERİĞİ OKUNMUYOR, SAYACI OKUNUYOR. `UIPasteboard.general.string`
+        // okumak iOS 16'dan beri "Yapıştırmaya izin ver" kutusunu çıkarabiliyor ve bunu
+        // her uygulamaya dönüşte sormak, çözdüğü sorundan daha rahatsız edici olurdu.
+        // `changeCount` erişim korumasına tabi değil ve tek sorduğumuz şeyi söylüyor:
+        // biz yazdıktan sonra panoya başka biri dokundu mu.
+        guard UIPasteboard.general.changeCount != pending.changeCount else { return nil }
+        UIPasteboard.general.string = pending.text
+        pendingCaption = (pending.text, pending.at, UIPasteboard.general.changeCount)
+        return pending.text
+    }
+
+    /// Devrin ardından caption'ın geri konabileceği süre.
+    private static let captionRestoreWindow: TimeInterval = 15 * 60
 
     /// Long enough for the operator to finish the post, short enough that a video is not left on
     /// the pasteboard for the rest of the day.

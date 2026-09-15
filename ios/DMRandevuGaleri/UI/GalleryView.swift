@@ -86,9 +86,25 @@ struct GalleryView: View {
             playerManager?.setWatermark(model.watermarkHandle())
         }
         .onChange(of: scenePhase) { _, phase in
+            // ─── CAPTION'I GERİ KOY ─────────────────────────────────────────────
+            //
+            // Reels'e devredilen caption Instagram'a kadar gidemiyor: videoyu besteciye
+            // taşıyan şey panonun kendisi ve Instagram onu tükettikten sonra panoda ne
+            // kaldığı bizim elimizde değil. Öğenin içine koymak da, devirden sonra
+            // gecikmeli yazmak da denendi; ikisi de yetmedi.
+            //
+            // Buradan sonrası garanti: uygulama ÖNE geldiğinde panoya yazmak her zaman
+            // çalışıyor. Operatör Reels'te yapıştıramazsa uygulamaya bir saniyeliğine
+            // dönüyor, caption panoya geri konuyor ve söyleniyor.
+            if phase == .active {
+                if InstagramSharing.restoreCaptionOnReturn() != nil {
+                    model.toast = Strings.captionRestored
+                }
+                return
+            }
+
             // Leaving the app settles the pending deletion — otherwise a swipe followed by a home
             // press would silently keep the conversation the operator meant to discard.
-            guard phase != .active else { return }
             model.commitPendingNow()
             // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp ana
             // ekrana çıkmak kararı sessizce yutmamalı.
