@@ -79,7 +79,8 @@ enum InstagramSharing {
               let data = try? Data(contentsOf: video) else { return false }
 
         var item: [String: Any] = [backgroundVideoKey: data, appIDKey: metaAppID]
-        // Caption AYNI ÖĞEDE gidiyor; gerekçesi [plainTextKey] başlığında.
+        // Caption AYNI ÖĞEDE de gidiyor; gerekçesi [plainTextKey] başlığında. Tek başına
+        // yetmiyor, aşağıdaki gecikmeli yazma onun yedeği.
         if let caption, !caption.isEmpty { item[plainTextKey] = caption }
 
         UIPasteboard.general.setItems(
@@ -87,8 +88,46 @@ enum InstagramSharing {
             options: [.expirationDate: Date().addingTimeInterval(pasteboardLifetime)]
         )
         UIApplication.shared.open(url)
+
+        if let caption, !caption.isEmpty { writeCaptionAfterHandoff(caption) }
         return true
     }
+
+    /// Caption'ı, Instagram videoyu panodan ALDIKTAN SONRA tek başına panoya yazar.
+    ///
+    /// NEDEN GECİKMELİ, NEDEN İKİNCİ KEZ: devir anında panoya konan metnin Reels'te
+    /// yapıştırılamadığı görüldü ve bunun iki makul sebebi var, ikisi de buradan
+    /// görünmüyor. (1) Instagram videoyu tükettikten sonra panoyu temizliyor olabilir —
+    /// Meta'nın kendi belgeleri bile paylaşan uygulamaya "cihazda bıraktığın geçici
+    /// dosyaları temizle" diyor. (2) Öğeye konan son kullanma tarihi caption'ı da
+    /// kapsıyor: video ilk saniyede tüketiliyor ama caption ancak kırpma ve "İleri"den
+    /// SONRA gerekiyor, yani beş dakika gerçekçi bir düzenlemeye yetmeyebiliyor.
+    ///
+    /// Bu yazma ikisini birden kapatıyor: video alındıktan sonra çalışıyor, düz metin
+    /// olarak yazıyor ve son kullanma tarihi taşımıyor.
+    ///
+    /// NEDEN ARKA PLAN GÖREVİ: `open` çağrısından hemen sonra uygulama arka plana
+    /// düşüyor ve iOS birkaç saniye içinde askıya alıyor. Görev, bekleme boyunca
+    /// süreci ayakta tutuyor. Panoya YAZMAK arka planda serbest; kısıtlı olan okumak.
+    @MainActor
+    private static func writeCaptionAfterHandoff(_ caption: String) {
+        Task { @MainActor in
+            var task = UIBackgroundTaskIdentifier.invalid
+            task = UIApplication.shared.beginBackgroundTask(withName: "reels-caption") {
+                UIApplication.shared.endBackgroundTask(task)
+                task = .invalid
+            }
+            try? await Task.sleep(nanoseconds: UInt64(captionHandoffDelay * 1_000_000_000))
+            UIPasteboard.general.string = caption
+            if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+        }
+    }
+
+    /// Instagram'ın videoyu panodan almasına bırakılan süre.
+    ///
+    /// Erken yazmak videoyu panodan silip devri bozardı; geç yazmak arka plan süresini
+    /// tüketirdi. Üç saniye, besteci açılırken video zaten okunmuş oluyor.
+    private static let captionHandoffDelay: Double = 3
 
     /// Instagram'ı açar; video zaten fotoğraflarda, caption panoda bekliyor.
     ///

@@ -410,6 +410,11 @@ final class GalleryUITests: XCTestCase {
             XCTWaiter().wait(for: [backgrounded], timeout: 240), .completed,
             "the app never went to the background — Instagram was not handed the video"
         )
+
+        // PANOYU BURADAN ÖLÇEMİYORUZ ve denendi: test koşucusu ayrı bir uygulama ve öne
+        // gelmediği sürece iOS genel panoyu ona hiç vermiyor ("Pasteboard is not available
+        // at this time"). Dönen boş liste panonun boş olduğunu DEĞİL, sorunun
+        // cevaplanmadığını gösteriyor — bu ayrımı kaybetmemek için ölçüm kaldırıldı.
     }
 
     // MARK: - Handles
