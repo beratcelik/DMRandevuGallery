@@ -89,9 +89,6 @@
     <string name="ihbar_not_violation_sending">Eleniyor…</string>
     <string name="ihbar_not_violation_marked">İhlal değil — elendi</string>
     <string name="ihbar_not_violation_error">Elenemedi — dokunup tekrar deneyin</string>
-    <string name="ihbar_retract_title">Bu ihbar geri çekilsin mi?</string>
-    <string name="ihbar_retract_explain">Bu kayıt onaylandı ve memurlara iletildi. \"İhlal değil\" demek, ihbarı geri çeker ve memurlara geri çekme bildirimi gönderir.</string>
-    <string name="ihbar_retract_confirm">Geri çek</string>
     <string name="ihbar_token_title">İhbar cihaz belirteci</string>
     <string name="ihbar_token_explain">Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli.</string>
     <string name="ihbar_token_hint">tid_…</string>
@@ -118,10 +115,6 @@
     <string name="bulk_dismiss_result">%1$d video elendi, %2$d atlandı</string>
     <string name="bulk_dismiss_failed">Toplu eleme başarısız — tekrar deneyin</string>
 
-    <!-- Geri çekme penceresi: kayıtta başka video varsa metin değişiyor -->
-    <string name="ihbar_retract_detach_title">Bu video ihbardan çıkarılsın mı?</string>
-    <string name="ihbar_retract_detach_explain">Bu ihbar %1$d video taşıyor ve memurlara iletildi. Yalnızca bu video kayıttan çıkarılacak; ihbar kalan videolarla memurda kalmaya devam edecek.</string>
-    <string name="ihbar_retract_detach_confirm">Videoyu çıkar</string>
 
     <!-- Playback -->
     <string name="playback_speed">%1$d×</string>

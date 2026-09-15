@@ -13,8 +13,10 @@ The horizontal axis is the decision (on the `trafik_cezasi` account only): **swi
 report the video as a traffic violation, swipe left to dismiss it**. The request is held for
 three seconds behind an undo chip, and swiping back onto the page cancels it too. Dismissing a
 video that belongs to a multi-video report removes only that video; the report stays up with the
-rest of its evidence. Approved reports are the one case that asks first, because dismissing one
-retracts it from the officers it already reached.
+rest of its evidence. Dismissing one that was already approved retracts it from the officers it
+reached, and rides the same three-second window as any other dismiss — nothing asks first,
+because retraction sends the officers no notice of its own; the record simply stops being
+visible to them.
 
 Per video: save to the phone gallery, hand straight to Instagram Stories, prepare for Reels,
 or generate an AI caption.

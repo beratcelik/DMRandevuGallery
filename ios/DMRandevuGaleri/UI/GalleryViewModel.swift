@@ -540,9 +540,15 @@ final class GalleryViewModel {
     /// ÇOĞU kaybolurdu — sahip videoyu izlediği anda basıyor, kayıt saatler sonra
     /// açılıyor.
     func markNotViolation(_ conversation: Conversation, mediaIndex: Int) {
-        // Düğme yanlış hesapta zaten çizilmiyor; koruma burada da duruyor çünkü
+        // Yatay eksen yanlış hesapta zaten atıl; koruma burada da duruyor çünkü
         // eleme, onaylanmış bir kaydı memurdan geri çektirebiliyor ve tek bir
         // görünüm koşulunun doğru yazılmış olmasına bırakılamaz.
+        //
+        // ARTIK SORU SORULMUYOR: onaylanmış kayda sola atış bir zamanlar onay
+        // penceresi açıyordu, çünkü geri çekme memurlara ayrıca bildirim
+        // gönderiyordu. O bildirim kaldırıldı; kayıt memurun panelinden sessizce
+        // düşüyor. Geriye üç saniyelik geri alma çipi kaldı ve diğer her karar
+        // gibi bu da ondan geçiyor.
         guard ihbarAvailable else { return }
         let key = Self.ihbarKey(conversation.key, mediaIndex)
         let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)

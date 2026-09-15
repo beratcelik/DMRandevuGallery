@@ -143,14 +143,6 @@ fun VideoPage(
     var captionForUrl by remember { mutableStateOf<String?>(null) }
     // Belirteci yapıştırma penceresi açık mı.
     var ihbarTokenPrompt by remember { mutableStateOf(false) }
-    // Geri çekme onayı sorulan videonun SIRASI (null: pencere kapalı).
-    //
-    // NEDEN SIRA SAKLANIYOR, page.mediaIndex OKUNMUYOR: pencere açıkken
-    // yatay kaydırma serbest. Onaya basıldığı anda currentPage okunsaydı, sahip
-    // pencereyi açtıktan sonra bir sonraki videoya kaydırdıysa geri çekilen
-    // ihbar HİÇ SORULMAYAN video olurdu — hem yanlış kayıt elenir hem de
-    // gerçekten elenmek istenen ihbar memura gitmeye devam ederdi.
-    var ihbarRetractIndex by remember { mutableStateOf<Int?>(null) }
     // Toplu eleme onayı istenirken kaç video elenecek (null: pencere kapalı).
     var bulkDismissCount by remember { mutableStateOf<Int?>(null) }
     // Percentage of the running export, or null while nothing is being processed. Only one
@@ -426,23 +418,6 @@ fun VideoPage(
                             // kartı "iptal edilmiş bir animasyon" gibi gösteriyordu;
                             // yay, elden bırakılan bir kartın masaya oturması gibi.
                             verdict == null -> scope.launch { settleBack() }
-
-                            // ONAYLANMIŞ KAYDA SOLA ATIŞ TEK İSTİSNA: burada
-                            // hareket bir kaydı kapatmakla kalmıyor, memura
-                            // GİTMİŞ ihbarı geri çekiyor ve karşı tarafa
-                            // düzeltme bildirimi gönderiyor. Üç saniyelik geri
-                            // alma penceresi bunun için yeterli değil; kart
-                            // yerine dönüyor ve soru soruluyor.
-                            //
-                            // SIRA KAYDIRMA ANINDA YAKALANIYOR: pencere açıkken
-                            // akış ilerleyebiliyor ve onay anında o anki sayfa
-                            // okunsaydı, sahibin hiç bakmadığı bir ihbar
-                            // memurdan geri çekilirdi.
-                            verdict == SwipeDecision.DISMISS &&
-                                ihbarMark.phase == IhbarPhase.APPROVED -> {
-                                scope.launch { settleBack() }
-                                ihbarRetractIndex = page.mediaIndex
-                            }
 
                             ihbarMark.phase == IhbarPhase.NO_TOKEN -> {
                                 // Belirteç yokken kaydırma ağa çıkmıyor; eksik
@@ -1293,25 +1268,6 @@ fun VideoPage(
             rawMediaUrl = rawUrl,
             onSessionLost = viewModel::reportSessionLost,
             onDismiss = { captionForUrl = null }
-        )
-    }
-
-    ihbarRetractIndex?.let { index ->
-        IhbarRetractDialog(
-            // İşaret, pencerenin AÇILDIĞI videonun işareti: metin kaydın kaç
-            // video taşıdığına göre dallanıyor (tamamı geri mi çekilecek, yoksa
-            // yalnızca bu video mu ayrılacak).
-            mark = viewModel.ihbarMark(conversation.key, index),
-            onDismiss = { ihbarRetractIndex = null },
-            onConfirm = {
-                ihbarRetractIndex = null
-                // Onaylanmış kayıtta karar BEKLETİLMİYOR: pencere zaten sorunun
-                // kendisi ve ikinci bir geri alma penceresi, memura gidecek
-                // düzeltmeyi üç saniye daha belirsiz tutmaktan başka işe
-                // yaramazdı.
-                viewModel.markNotViolation(conversation, index)
-                onAdvance()
-            }
         )
     }
 

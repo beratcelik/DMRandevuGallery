@@ -695,10 +695,17 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         if (!ihbarEnabled) return
         val key = ihbarKey(conversation.key, mediaIndex)
         val current = ihbarMark(conversation.key, mediaIndex)
-        // Zaten elenmiş ya da yolda olan düğmeye yeniden basılmaz. Onaylanmış
+        // Zaten elenmiş ya da yolda olan karar yeniden gönderilmez. Onaylanmış
         // (VERIFIED/APPROVED) kayıtlar bu listede YOK: bir ihbarı memurdan geri
-        // çekmenin tek yolu bu düğme ve sunucu o yolu (retractViolation)
+        // çekmenin tek yolu sola atmak ve sunucu o yolu (retractViolation)
         // destekliyor.
+        //
+        // ARTIK SORU SORULMUYOR: onaylanmış kayda sola atış bir zamanlar onay
+        // penceresi açıyordu, çünkü geri çekme memurlara ayrıca bir bildirim
+        // gönderiyordu. O bildirim kaldırıldı — kayıt memurun panelinden
+        // sessizce düşüyor (REJECTED, OFFICER_VISIBLE_STATUSES dışında) — yani
+        // pencerenin koruduğu geri alınamaz an da kalmadı. Geriye üç saniyelik
+        // geri alma çipi kaldı ve diğer her karar gibi bu da ondan geçiyor.
         val blocked = when (current.phase) {
             IhbarPhase.BUSY, IhbarPhase.REJECTING -> R.string.ihbar_in_flight
             IhbarPhase.NOT_VIOLATION -> R.string.ihbar_already_dismissed

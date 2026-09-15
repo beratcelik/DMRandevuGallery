@@ -105,11 +105,6 @@ enum Strings {
     static let ihbarNotViolationSending = "Eleniyor…"
     static let ihbarNotViolationMarked = "İhlal değil — elendi"
     static let ihbarNotViolationError = "Elenemedi — dokunup tekrar deneyin"
-    static let ihbarRetractTitle = "Bu ihbar geri çekilsin mi?"
-    static let ihbarRetractExplain =
-        "Bu kayıt onaylandı ve memurlara iletildi. \"İhlal değil\" demek, ihbarı geri çeker "
-        + "ve memurlara geri çekme bildirimi gönderir."
-    static let ihbarRetractConfirm = "Geri çek"
     static let ihbarTokenTitle = "İhbar cihaz belirteci"
     static let ihbarTokenExplain =
         "Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli."
@@ -150,15 +145,6 @@ enum Strings {
         "\(applied) video elendi, \(skipped) atlandı"
     }
     static let bulkDismissFailed = "Toplu eleme başarısız — tekrar deneyin"
-
-    // MARK: - Geri çekme penceresi: kayıtta başka video varsa metin değişiyor
-
-    static let ihbarRetractDetachTitle = "Bu video ihbardan çıkarılsın mı?"
-    static func ihbarRetractDetachExplain(_ count: Int) -> String {
-        "Bu ihbar \(count) video taşıyor ve memurlara iletildi. Yalnızca bu video kayıttan "
-        + "çıkarılacak; ihbar kalan videolarla memurda kalmaya devam edecek."
-    }
-    static let ihbarRetractDetachConfirm = "Videoyu çıkar"
 
     // MARK: - Playback
 

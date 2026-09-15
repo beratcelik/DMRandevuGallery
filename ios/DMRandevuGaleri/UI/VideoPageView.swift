@@ -53,13 +53,6 @@ struct VideoPageView: View {
     /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
     @State private var ihbarTokenPrompt = false
     @State private var ihbarTokenDraft = ""
-    /// Geri çekme onayı bekleyen videonun sırası, ya da pencere kapalıyken nil.
-    ///
-    /// NEDEN SIRA SAKLANIYOR DA onayda `currentIndex` OKUNMUYOR: bu sayfa bir
-    /// konuşmanın BÜTÜN videolarını taşıyor ve `currentIndex` yatay kaydırmayla
-    /// değişiyor. Pencereyi açan video ile onaylanan video ayrışırsa, sahibin
-    /// hiç bakmadığı bir ihbar memurdan geri çekilirdi.
-    @State private var ihbarRetractIndex: Int?
     /// Toplu eleme onayı istenirken kaç video elenecek (nil: pencere kapalı).
     @State private var bulkDismissCount: Int?
 
@@ -283,36 +276,6 @@ struct VideoPageView: View {
             Button(Strings.cancel, role: .cancel) { ihbarTokenDraft = "" }
         } message: {
             Text(Strings.ihbarTokenExplain)
-        }
-        // NEDEN YALNIZCA ONAYLANMIŞ KAYITTA SORULUYOR: her elemede bir pencere
-        // açmak, sahibin her videoda iki dokunuş yapması demek — eleme zaten
-        // sıradan ve geri alınabilir bir karar (son dokunuş kazanır). Onaylanmış
-        // kayıt tek istisna: orada işlem geri çekmeye dönüşüyor ve bedelini
-        // uygulamanın dışında, memurun gelen kutusunda ödüyor.
-        //
-        // İKİ AYRI METİN, ÇÜNKÜ İKİ AYRI SONUÇ: kayıt birden çok video taşıyorsa
-        // karar kaydın tamamını geri ÇEKMİYOR, yalnızca bu videoyu kayıttan
-        // ÇIKARIYOR ve ihbar kalan delille memurda kalmaya devam ediyor. Tek
-        // metin, gerçekleşmeyecek bir şeyi vaat ederdi (bkz. IhbarRetractCopy).
-        .alert(
-            IhbarRetractCopy.title(ihbarMark),
-            isPresented: Binding(
-                get: { ihbarRetractIndex != nil },
-                set: { if !$0 { ihbarRetractIndex = nil } }
-            ),
-            presenting: ihbarRetractIndex
-        ) { index in
-            Button(IhbarRetractCopy.confirm(ihbarMark), role: .destructive) {
-                // Onaylanmış kayıtta karar BEKLETİLMİYOR: pencere zaten sorunun
-                // kendisi ve ikinci bir geri alma penceresi, memura gidecek
-                // düzeltmeyi üç saniye daha belirsiz tutmaktan başka işe
-                // yaramazdı.
-                model.markNotViolation(conversation, mediaIndex: index)
-                onAdvance()
-            }
-            Button(Strings.cancel, role: .cancel) {}
-        } message: { _ in
-            Text(IhbarRetractCopy.explain(ihbarMark))
         }
         // Toplu eleme onayı.
         .confirmationDialog(
@@ -544,15 +507,6 @@ struct VideoPageView: View {
     // MARK: - Kartın fiziği
 
     /// Parmak kalktığında: kart ya yerine OTURUYOR ya ekrandan UÇUYOR.
-    ///
-    /// ONAYLANMIŞ KAYITTA SOLA ATIŞ TEK İSTİSNA: burada karar bir kaydı
-    /// kapatmakla kalmıyor, memura GİTMİŞ ihbarı geri çekiyor ve karşı tarafa
-    /// düzeltme bildirimi gönderiyor. Üç saniyelik geri alma penceresi bunun
-    /// için yeterli değil; kart yerine dönüyor ve soru soruluyor.
-    ///
-    /// SIRA KAYDIRMA ANINDA YAKALANIYOR: pencere açıkken akış ilerleyebiliyor ve
-    /// onay anında o anki sayfa okunsaydı, sahibin hiç bakmadığı bir ihbar
-    /// memurdan geri çekilirdi.
     private func settleCard(translation: CGSize, velocity: CGSize) {
         let verdict = decisionFor(
             translation: translation.width,
@@ -567,12 +521,6 @@ struct VideoPageView: View {
             // makul davranış.
             settleBack()
             ihbarTokenPrompt = true
-            return
-        }
-
-        if verdict == .dismiss, ihbarMark.phase == .approved {
-            settleBack()
-            ihbarRetractIndex = page.mediaIndex
             return
         }
 

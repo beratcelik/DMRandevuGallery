@@ -180,22 +180,6 @@ final class IhbarNotViolationTests: XCTestCase {
         XCTAssertEqual(mark.mediaCount, 2)
     }
 
-    /// Geri çekme penceresi, kayıtta itirazsız delil kalıyorsa AYIRMA metnini
-    /// kuruyor. Tek metin, gerçekleşmeyecek bir şeyi ("ihbar geri çekilir")
-    /// vaat ederdi.
-    func testRetractCopyBranchesOnRemainingEvidence() {
-        let multi = IhbarMark(phase: .approved, mediaCount: 3, eliminatedCount: 0)
-        XCTAssertTrue(IhbarRetractCopy.detachOnly(multi))
-
-        let single = IhbarMark(phase: .approved, mediaCount: 1, eliminatedCount: 0)
-        XCTAssertFalse(IhbarRetractCopy.detachOnly(single))
-
-        // Sunucu sayı göndermediyse (eski sunucu) AĞIR metin kalıyor: hafif
-        // olanı vaat edip ağırını yapmaktan iyi.
-        let unknown = IhbarMark(phase: .approved)
-        XCTAssertFalse(IhbarRetractCopy.detachOnly(unknown))
-    }
-
     /// KARAR VERİLMEMİŞ VİDEODA ÇİP YOK.
     ///
     /// Sahip videoyu yeni açtı; karar vermediği zaten kesin ve o etiket hiçbir
