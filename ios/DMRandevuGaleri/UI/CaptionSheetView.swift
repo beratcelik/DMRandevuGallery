@@ -171,7 +171,20 @@ struct CaptionSheetView: View {
                 // the same trick the web gallery uses.
                 InstagramSharing.copyCaption(text)
                 onToast(Strings.captionCopied)
-                shareFile = file
+
+                // REELS BESTECİSİ ÖNCE. Caption'ı bu sayfada ürettiysek gidilecek yer bellidir:
+                // haber metniyle paylaşılan bir trafik videosu Reels'e gidiyor.
+                //
+                // ALTTAKİ YEDEK NE İŞE YARIYOR: paylaşım sayfası (UIActivityViewController)
+                // Instagram'a ulaşıyor ama hangi yüzeye düşeceğini söylemiyor. Yedek yine de
+                // duruyor: besteci kapalıysa ya da Instagram adresi karşılamazsa elde bir şey
+                // kalması, hiç açılmamasından iyi.
+                if InstagramSharing.reelsComposerEnabled,
+                   InstagramSharing.openReelComposer(video: file) {
+                    dismiss()
+                } else {
+                    shareFile = file
+                }
             } catch is UnauthorizedError {
                 onSessionLost()
                 dismiss()

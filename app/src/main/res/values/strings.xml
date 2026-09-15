@@ -126,7 +126,7 @@
     <string name="caption_failed">Caption üretilemedi</string>
     <string name="caption_explanation_hint">Videoyu açıklayın (isteğe bağlı)</string>
     <string name="caption_regenerate">Açıklamayla yeniden üret</string>
-    <string name="caption_share">Instagram\'da paylaş</string>
+    <string name="caption_share">Reels olarak paylaş</string>
     <string name="caption_copied">Caption panoya kopyalandı</string>
     <string name="caption_copy">Kopyala</string>
     <string name="share_preparing">Video hazırlanıyor…</string>

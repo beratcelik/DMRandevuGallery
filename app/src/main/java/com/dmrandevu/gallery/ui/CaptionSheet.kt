@@ -46,6 +46,7 @@ import com.dmrandevu.gallery.data.CaptionFailedException
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.Downloader
+import com.dmrandevu.gallery.media.InstagramSharing
 import com.dmrandevu.gallery.media.ExportOptions
 import com.dmrandevu.gallery.media.VideoExporter
 import kotlinx.coroutines.launch
@@ -284,6 +285,20 @@ private fun copyToClipboard(context: Context, text: String) {
 }
 
 private fun shareVideo(context: Context, file: java.io.File) {
+    // REELS BESTECİSİ ÖNCE. Caption'ı bu sayfada ürettiysek gidilecek yer bellidir:
+    // haber metniyle paylaşılan bir trafik videosu Reels'e gidiyor, Direct'e değil.
+    //
+    // ALTTAKİ YEDEK NE İŞE YARIYOR: ACTION_SEND Instagram'a ulaşıyor ama HANGİ
+    // yüzeye düşeceğini söylemiyor — Samsung'un paylaşım sayfası hedefleri tek
+    // girdiye indiriyor ve sonuç Direct oluyor. Yıllardır buradaki davranış buydu.
+    // Yedek yine de duruyor: besteci kapalıysa ya da Instagram niyeti hiç
+    // karşılamazsa elde bir şey kalması, hiç açılmamasından iyi.
+    if (InstagramSharing.REELS_COMPOSER_ENABLED &&
+        InstagramSharing.openReelComposer(context, file)
+    ) {
+        return
+    }
+
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = Downloader.MIME_TYPE

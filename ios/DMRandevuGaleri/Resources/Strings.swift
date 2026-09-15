@@ -158,7 +158,7 @@ enum Strings {
     static let captionFailed = "Caption üretilemedi"
     static let captionExplanationHint = "Videoyu açıklayın (isteğe bağlı)"
     static let captionRegenerate = "Açıklamayla yeniden üret"
-    static let captionShare = "Instagram'da paylaş"
+    static let captionShare = "Reels olarak paylaş"
     static let captionCopied = "Caption panoya kopyalandı"
     static let captionCopy = "Kopyala"
     static let sharePreparing = "Video hazırlanıyor…"
