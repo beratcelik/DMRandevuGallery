@@ -383,6 +383,35 @@ final class GalleryUITests: XCTestCase {
         if done.waitForExistence(timeout: 2) { done.tap() }
     }
 
+    /// Reels düğmesi videoyu Instagram'ın Reels bestecisine devrediyor mu.
+    ///
+    /// ELLE SINANAMIYORDU: devir uygulamanın DIŞINDA bitiyor, yani ekrandaki hiçbir şey
+    /// "oldu" demiyor. Ölçülebilen tek şey uygulamanın arka plana düşmesi — Instagram öne
+    /// geldiği an bu olur ve olmazsa devir hiç gerçekleşmemiş demektir.
+    ///
+    /// UZUN ZAMAN AŞIMI BİLİNÇLİ: düğme önce videoyu dışa aktarıyor (filtreler açıksa
+    /// dakikalar), sonra caption üretiyor (sunucu tarafında 90 sn okuma zaman aşımı) ve
+    /// devri ancak ondan sonra yapıyor. Kısa bir bekleme, çalışan bir akışı hatalı gösterirdi.
+    ///
+    /// NE BIRAKIYOR: telefonun galerisine bir video ve panoda bir caption. İhbar kararı
+    /// vermiyor, konuşma silmiyor — bu yüzden gerçek hesapta koşturmak güvenli.
+    @MainActor
+    func testReelsButtonHandsOffToInstagram() throws {
+        let reels = onScreen("actionReels")
+        XCTAssertTrue(reels.waitForExistence(timeout: 10), "Reels button is not on screen")
+        XCTAssertTrue(reels.isHittable, "Reels button cannot be tapped")
+        reels.tap()
+
+        let backgrounded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "state == %d", XCUIApplication.State.runningBackground.rawValue),
+            object: app
+        )
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [backgrounded], timeout: 240), .completed,
+            "the app never went to the background — Instagram was not handed the video"
+        )
+    }
+
     // MARK: - Handles
 
     /// The element with this identifier on the page currently on screen.
