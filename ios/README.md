@@ -11,6 +11,33 @@ open ios/DMRandevuGaleri.xcodeproj
 Requires Xcode 26 with the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`).
 Deployment target iOS 18.
 
+## Building it on another Mac
+
+Two things the clone does not bring with it. Both are deliberate: one is a pinned upstream
+checkout, the other its build product.
+
+```sh
+git clone --recurse-submodules https://github.com/beratcelik/DMRandevuGallery.git
+cd DMRandevuGallery
+ios/Scripts/build-whisper-xcframework.sh   # writes ios/Frameworks/whisper.xcframework
+open ios/DMRandevuGaleri.xcodeproj
+```
+
+An existing clone that missed the submodule: `git submodule update --init --recursive`. Without
+it the script has no sources; without the script the project has no whisper framework and the
+build stops at linking.
+
+Then, in Signing & Capabilities, **set your own team and change the bundle identifier**.
+`com.dmrandevu.gallery` is registered to the team that built this, and Apple will not let a
+second team claim the same identifier — automatic signing fails with no useful explanation
+until you do. Anything unique works, e.g. `com.<you>.dmrandevugaleri`.
+
+A free Apple ID is enough to run it on your own phone; the profile lasts seven days and the
+first launch needs the certificate trusted once under Settings → General → VPN & Device
+Management.
+
+The Core ML models are committed and need nothing.
+
 ## How it maps to the Android build
 
 Nearly all of it is a direct port — `BlurTimeline`, `RegionScanner`, `Downloader`, `PlayerManager`
