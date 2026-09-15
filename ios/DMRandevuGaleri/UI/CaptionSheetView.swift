@@ -180,7 +180,7 @@ struct CaptionSheetView: View {
                 // duruyor: besteci kapalıysa ya da Instagram adresi karşılamazsa elde bir şey
                 // kalması, hiç açılmamasından iyi.
                 if InstagramSharing.reelsComposerEnabled,
-                   InstagramSharing.openReelComposer(video: file) {
+                   InstagramSharing.openReelComposer(video: file, caption: text) {
                     dismiss()
                 } else {
                     shareFile = file

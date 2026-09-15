@@ -1165,7 +1165,14 @@ struct VideoPageView: View {
                 if let caption, hasCaption { InstagramSharing.copyCaption(caption) }
 
                 // ÖNCE BESTECİ, sonra uygulama.
-                let inComposer = InstagramSharing.openReelComposer(video: file)
+                //
+                // CAPTION BESTECİYE AYRICA VERİLİYOR: yukarıdaki copyCaption yedek yol
+                // (uygulamanın düz açılması) için duruyor, ama besteci panoyu komple
+                // değiştiriyor — caption oraya aynı öğenin içinde girmezse siliniyor.
+                let inComposer = InstagramSharing.openReelComposer(
+                    video: file,
+                    caption: hasCaption ? caption : nil
+                )
                 let opened = inComposer || InstagramSharing.openInstagram()
 
                 // MESAJ YALNIZCA SÖYLEYECEK BİR ŞEY VARSA. iOS'un uygulama üstü bildirimi

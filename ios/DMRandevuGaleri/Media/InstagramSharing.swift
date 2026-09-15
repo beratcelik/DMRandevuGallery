@@ -32,6 +32,16 @@ enum InstagramSharing {
     /// adresin içinden değil.
     private static let appIDKey = "com.instagram.sharedSticker.appID"
 
+    /// Caption'ın pano gösterimi.
+    ///
+    /// NEDEN AYNI ÖĞENİN İÇİNDE: iOS'ta videoyu besteciye taşıyan şey panonun kendisi ve
+    /// `setItems` panoyu KOMPLE değiştiriyor. Caption'ı ayrıca `UIPasteboard.general.string`
+    /// ile yazmak işe yaramıyordu — bir satır sonraki `setItems` onu siliyordu ve operatör
+    /// Reels'e boş panoyla varıyordu. Aynı öğeye düz metin gösterimi eklendiğinde panonun
+    /// `string` değeri caption oluyor, Instagram ise videoyu kendi anahtarından okumaya
+    /// devam ediyor.
+    private static let plainTextKey = "public.utf8-plain-text"
+
     @MainActor
     static var isInstalled: Bool {
         guard let url = URL(string: appScheme) else { return false }
@@ -63,13 +73,17 @@ enum InstagramSharing {
     /// bir şey ve buradan görünmüyor — çağıran her hâlükârda fotoğraflara kaydeden yolu elinde
     /// tutmalı.
     @MainActor
-    static func openReelComposer(video: URL) -> Bool {
+    static func openReelComposer(video: URL, caption: String? = nil) -> Bool {
         guard let url = URL(string: reelsScheme),
               UIApplication.shared.canOpenURL(url),
               let data = try? Data(contentsOf: video) else { return false }
 
+        var item: [String: Any] = [backgroundVideoKey: data, appIDKey: metaAppID]
+        // Caption AYNI ÖĞEDE gidiyor; gerekçesi [plainTextKey] başlığında.
+        if let caption, !caption.isEmpty { item[plainTextKey] = caption }
+
         UIPasteboard.general.setItems(
-            [[backgroundVideoKey: data, appIDKey: metaAppID]],
+            [item],
             options: [.expirationDate: Date().addingTimeInterval(pasteboardLifetime)]
         )
         UIApplication.shared.open(url)
