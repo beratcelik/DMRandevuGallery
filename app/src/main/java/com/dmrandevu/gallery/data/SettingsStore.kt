@@ -90,6 +90,17 @@ class SettingsStore(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_WATERMARK, DEFAULT_WATERMARK)
         set(value) = prefs.edit { putBoolean(KEY_WATERMARK, value) }
 
+    /**
+     * Akış tanıtımının en son gösterildiği yapı ("1.0+1"); boş ise hiç gösterilmedi.
+     *
+     * BAYRAK DEĞİL YAPI ADI: hareketler değiştiğinde versionCode artırılarak tanıtım bir kez
+     * daha gösterilebiliyor. Düz bir Boolean olsaydı, değişen bir hareketi öğrenmenin tek yolu
+     * uygulamayı silip yeniden kurmak olurdu.
+     */
+    var tourShownBuild: String
+        get() = prefs.getString(KEY_TOUR_BUILD, "")!!
+        set(value) = prefs.edit { putString(KEY_TOUR_BUILD, value) }
+
     companion object {
         const val DEFAULT_BASE_URL = "https://dmrandevu.com"
         const val DEFAULT_IHBAR_BASE_URL = "https://ihbar.lega.digital"
@@ -110,6 +121,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         private const val KEY_BLUR_PLATES = "blur_plates"
         private const val KEY_FAST_PLATES = "fast_plates"
         private const val KEY_WATERMARK = "watermark"
+        private const val KEY_TOUR_BUILD = "tour_shown_build"
         private const val KEY_CENSOR_AUDIO = "censor_audio"
         private const val KEY_CENSOR_INSULTS = "censor_insults"
         private const val KEY_CENSOR_BY_HAND = "censor_by_hand"

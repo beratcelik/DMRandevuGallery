@@ -88,6 +88,16 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Key.watermark) }
     }
 
+    /// Akış tanıtımının en son gösterildiği yapı ("1.0+1"); boş ise hiç gösterilmedi.
+    ///
+    /// BAYRAK DEĞİL YAPI ADI: hareketler değiştiğinde yapı numarası artırılarak tanıtım bir kez
+    /// daha gösterilebiliyor. Düz bir Bool olsaydı, değişen bir hareketi öğrenmenin tek yolu
+    /// uygulamayı silip yeniden kurmak olurdu.
+    var tourShownBuild: String {
+        get { defaults.string(forKey: Key.tourBuild) ?? "" }
+        set { defaults.set(newValue, forKey: Key.tourBuild) }
+    }
+
     /// Beep over Turkish swearing in every exported video. Off by default: it needs a quarter of
     /// a gigabyte of models downloaded before it can do anything.
     var censorAudio: Bool {
@@ -124,5 +134,6 @@ final class SettingsStore {
         static let censorAudio = "censor_audio"
         static let censorInsults = "censor_insults"
         static let censorByHand = "censor_by_hand"
+        static let tourBuild = "tour_shown_build"
     }
 }

@@ -100,6 +100,33 @@ class IhbarRepository(baseClient: OkHttpClient, private val settings: SettingsSt
             json.decodeFromString<IhbarRejectResponse>(body)
         }
 
+    /**
+     * Bir konuşmanın karar verilmemiş videolarını TEK istekte eler.
+     *
+     * NEDEN TEKİL UÇ YETMEDİ: bir muhabir on beş video gönderebiliyor ve
+     * hiçbiri ihlal olmayabilir. Tek tek elemek on beş istek demek; iki yazma
+     * ucu TEK bir oran sınırı kovasını paylaşıyor (dakikada yirmi) ve yirmi
+     * birinci dokunuş reddediliyor: konuşma yarım elenmiş kalıyor, ekranda
+     * bitmiş görünüyor ve tükenen bütçe o dakikadaki GERÇEK ihbarı da
+     * engelliyor. Toplu uçta bir istek tek hak sayılıyor.
+     *
+     * ONAYLANMIŞ KAYITLARI SUNUCU ATLIYOR: toplu bir hareket memura asla geri
+     * çekme bildirimi göndermiyor. Atlananlar yanıtta sebebiyle dönüyor ve
+     * ekran sahibe kaçının atlandığını söylüyor.
+     *
+     * TOPLU ONAY YOK: onay delili bir kamu birimine çıkarıyor ve tek bir
+     * kaydırma kazasının elli ihbarı birden göndermesi kabul edilemez.
+     */
+    suspend fun rejectBulk(items: List<IhbarItem>): IhbarBulkRejectResponse =
+        withContext(Dispatchers.IO) {
+            if (items.isEmpty()) return@withContext IhbarBulkRejectResponse()
+            val payload = json.encodeToString(
+                IhbarBulkRejectRequest.serializer(), IhbarBulkRejectRequest(items),
+            )
+            val body = post("/api/galeri/ihlal-degil-toplu", payload)
+            json.decodeFromString<IhbarBulkRejectResponse>(body)
+        }
+
     private fun post(path: String, payload: String): String {
         val token = settings.ihbarToken
         // Ağa hiç çıkmadan duruyoruz: belirteçsiz istek sunucuda yalnızca

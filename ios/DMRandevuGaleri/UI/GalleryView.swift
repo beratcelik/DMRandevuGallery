@@ -7,10 +7,20 @@ struct GalleryView: View {
 
     @State private var model: GalleryViewModel
     @State private var playerManager: PlayerManager?
-    @State private var currentKey: String?
+    /// Ekrandaki SAYFA kimliği ("konuşma#sıra").
+    ///
+    /// Eskiden konuşma anahtarıydı: akış düzleşti ve bir sayfa artık bir VİDEO,
+    /// çünkü yatay eksen karara ayrıldı (sağa at = ihbar, sola at = ihlal değil).
+    @State private var currentPageID: String?
 
     /// Read once the window exists; the controls sit inside these while the video ignores them.
     @State private var insets = EdgeInsets()
+
+    /// Tanıtım kurulum başına bir kez. Karar AÇILIŞTA bir kez okunuyor: her yeniden
+    /// çizimde ayarları okumak, "Anladım"a basıldıktan sonra aynı karede bayrağın
+    /// yazılmasıyla okunması arasında yarış açardı.
+    @State private var showTour = ServiceLocator.settings.tourShownBuild != currentBuildTag()
+    private let buildTag = currentBuildTag()
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,6 +45,22 @@ struct GalleryView: View {
 
             ToastView(message: $model.toast)
                 .padding(.bottom, insets.bottom)
+
+            // ─── AKIŞ TANITIMI ──────────────────────────────────────────────
+            //
+            // BURADA, sayfanın içinde değil: sayfalar ForEach içinde her biri için
+            // yeniden kuruluyor ve orada duran bir tanıtım her videoda bir kez
+            // çizilirdi. ZStack'in SON çocuğu olduğu için akışın tamamının üstünde.
+            //
+            // AKIŞ GELDİKTEN SONRA: boş bir ekranın üstünde hareketleri anlatmak,
+            // anlatılan şeyin arkasında hiçbir şey yokken anlatmak olurdu. Bir de
+            // ihbar hesabı olup olmadığı ancak hesap yüklendikten sonra belli.
+            if showTour && !model.items.isEmpty {
+                OrientationOverlay(ihbarEnabled: model.ihbarAvailable) {
+                    ServiceLocator.settings.tourShownBuild = buildTag
+                    showTour = false
+                }
+            }
         }
         .ignoresSafeArea()
         .environment(\.chromeInsets, insets)
@@ -43,10 +69,10 @@ struct GalleryView: View {
             if playerManager == nil { playerManager = makePlayerManager() }
             await model.loadMore(initial: true)
         }
-        .onChange(of: model.items.first?.key) { _, first in
+        .onChange(of: model.feed.first?.id) { _, first in
             // The very first page has arrived; put the pager on it so the settle handler has a
             // key to compare against.
-            if currentKey == nil { currentKey = first }
+            if currentPageID == nil { currentPageID = first }
         }
         .onChange(of: model.sessionLost) { _, lost in
             guard lost else { return }
@@ -64,6 +90,9 @@ struct GalleryView: View {
             // press would silently keep the conversation the operator meant to discard.
             guard phase != .active else { return }
             model.commitPendingNow()
+            // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp ana
+            // ekrana çıkmak kararı sessizce yutmamalı.
+            model.commitDecisionsNow()
             playerManager?.pauseAll()
         }
         .onDisappear { playerManager?.releaseAll() }
@@ -72,38 +101,59 @@ struct GalleryView: View {
     private func pager(_ playerManager: PlayerManager) -> some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(model.items.enumerated()), id: \.element.key) { index, conversation in
-                    ConversationPageView(
-                        conversation: conversation,
-                        isActivePage: currentKey == conversation.key,
-                        isNextPage: nextKey == conversation.key,
-                        playerManager: playerManager,
-                        model: model
-                    )
-                    .containerRelativeFrame([.horizontal, .vertical])
-                    .id(conversation.key)
+                ForEach(model.feed) { page in
+                    if let conversation = model.items.first(
+                        where: { $0.key == page.conversationKey }
+                    ) {
+                        VideoPageView(
+                            conversation: conversation,
+                            page: page,
+                            isActivePage: currentPageID == page.id,
+                            isNextPage: nextPageID == page.id,
+                            playerManager: playerManager,
+                            model: model,
+                            onAdvance: { advance(from: page) }
+                        )
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(page.id)
+                    }
                 }
             }
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $currentKey)
+        .scrollPosition(id: $currentPageID)
         .scrollIndicators(.hidden)
         // Only a settled page counts. Reacting to the position as it changes would read a swipe
         // the operator dragged halfway and let go of as a page they left, and delete a customer
         // they never meant to pass.
         .onScrollPhaseChange { _, phase in
-            guard phase == .idle, let currentKey else { return }
-            model.onPageSettled(key: currentKey)
+            guard phase == .idle, let currentPageID else { return }
+            model.onPageSettled(pageID: currentPageID)
         }
     }
 
-    /// The conversation after the one on screen — the one worth pre-buffering.
-    private var nextKey: String? {
-        guard let currentKey,
-              let index = model.items.firstIndex(where: { $0.key == currentKey }),
-              model.items.indices.contains(index + 1) else { return nil }
-        return model.items[index + 1].key
+    /// Ekrandakinden sonraki SAYFA — ön belleğe alınmaya değer olan.
+    ///
+    /// Düz akışta bu çoğu zaman AYNI müşterinin bir sonraki videosu; eskiden
+    /// her zaman bir sonraki müşteriydi.
+    private var nextPageID: String? {
+        guard let currentPageID,
+              let index = model.feed.firstIndex(where: { $0.id == currentPageID }),
+              model.feed.indices.contains(index + 1) else { return nil }
+        return model.feed[index + 1].id
+    }
+
+    /// Karar verildikten sonra bir sonraki videoya geçiş.
+    ///
+    /// SON SAYFADA HİÇBİR YERE GİTMİYORUZ: kaydıracak yer yok ve zorlamak,
+    /// kararı vermiş sayfayı titretirdi.
+    private func advance(from page: FeedPage) {
+        guard let index = model.feed.firstIndex(of: page),
+              model.feed.indices.contains(index + 1) else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            currentPageID = model.feed[index + 1].id
+        }
     }
 
     private func makePlayerManager() -> PlayerManager {

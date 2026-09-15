@@ -26,13 +26,22 @@ enum class PlaybackFailure {
 }
 
 /**
- * Two players, so the conversation on screen keeps playing while the next one pre-buffers and
- * a swipe starts instantly. A player per page would exhaust decoders; a single player would
- * rebuffer on every swipe.
+ * Üç oynatıcı: ekrandaki video oynarken bir sonraki ön belleğe alınıyor ve
+ * kaydırma anında başlıyor. Sayfa başına bir oynatıcı kod çözücüleri tüketirdi;
+ * tek oynatıcı her kaydırmada yeniden tamponlardı.
  *
- * Slots are claimed by conversation key rather than page index: deleting a conversation above
- * the viewport shifts every index down, and an index-keyed pool would hand the visible
- * conversation the *other* player mid-playback, restarting the video.
+ * ─── NEDEN İKİ DEĞİL ÜÇ ────────────────────────────────────────────────────
+ * Akış düzleşti: her sayfa artık bir VİDEO (eskiden bir konuşma). Bir sonraki
+ * sayfa çoğu zaman AYNI müşterinin bir sonraki videosu, yani ön belleğe alma
+ * eskisinden çok daha sık isteniyor. İki yuvayla, ekrandaki videonun yuvası
+ * sıklıkla tahliye adayı oluyordu.
+ *
+ * ─── YUVA ANAHTARI SAYFA KİMLİĞİ ("konuşma#sıra") ──────────────────────────
+ * Sıra numarası DEĞİL: görüş alanının üstündeki bir konuşma silindiğinde bütün
+ * sıralar kayıyor ve sıra anahtarlı bir havuz, ekrandaki sayfaya ÖTEKİ
+ * oynatıcıyı verip videoyu baştan başlatırdı. Konuşma anahtarı da yetmiyor:
+ * aynı konuşmanın iki videosu aynı yuvaya düşer ve bir sonraki videoyu ön
+ * belleğe almak, ekranda oynayan videonun kaynağını değiştirirdi.
  */
 @OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlayerManager(
@@ -69,7 +78,7 @@ class PlayerManager(
             }
     }
 
-    /** Which conversation each player is holding; see [SlotTable]. */
+    /** Her oynatıcının hangi SAYFAYI tuttuğu; bkz. [SlotTable]. */
     private val slots = SlotTable(POOL_SIZE)
 
     /** Which slot is on screen. The other one is only pre-buffering and stays effect-free. */
@@ -124,7 +133,7 @@ class PlayerManager(
     }
 
     /**
-     * Buffers the next conversation's first video without starting playback.
+     * Bir sonraki SAYFANIN videosunu oynatmadan tamponlar.
      *
      * Never with a watermark, and never on a slot already committed to the GL pipeline: off
      * screen there is no PlayerView, so nothing drains that pipeline's output and the player
@@ -229,7 +238,14 @@ class PlayerManager(
     fun release() = players.forEach { it.release() }
 
     private companion object {
-        const val POOL_SIZE = 2
+        /**
+         * Havuz boyutu.
+         *
+         * ÜÇ: ekrandaki sayfa, bir sonraki (ön belleğe alınan) ve geri
+         * kaydırıldığında hemen açılacak bir yedek. Dördüncü bir yuva, orta
+         * sınıf cihazlarda aynı anda açık kod çözücü sınırını zorluyor.
+         */
+        const val POOL_SIZE = 3
 
         /** How much of the video is left audible under the live censor tone. */
         const val DUCKED_VOLUME = 0.12f

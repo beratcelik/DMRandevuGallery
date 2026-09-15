@@ -31,7 +31,7 @@ val MarkColour = Color(0xFFE53935)
 /**
  * The scrubber under the video: where you are, how much is left, and a bar to move about with.
  *
- * Kept out of [ConversationPage] because that file already carries the whole screen, and this
+ * Kept out of [VideoPage] because that file already carries the whole screen, and this
  * needs to know nothing about players or downloads.
  */
 @Composable

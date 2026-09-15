@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The scrubber under the video: where you are, how much is left, and a bar to move about with.
 ///
-/// Kept out of ``ConversationPageView`` because that file already carries the whole screen, and
+/// Kept out of ``VideoPageView`` because that file already carries the whole screen, and
 /// this needs to know nothing about players or downloads.
 struct VideoScrubber: View {
 

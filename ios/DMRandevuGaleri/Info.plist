@@ -37,6 +37,7 @@
 	<array>
 		<string>instagram</string>
 		<string>instagram-stories</string>
+		<string>instagram-reels</string>
 	</array>
 
 	<key>UILaunchScreen</key>

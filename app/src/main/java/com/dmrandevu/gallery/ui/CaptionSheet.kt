@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.ServiceLocator
+import com.dmrandevu.gallery.data.CaptionFailedException
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.Downloader
@@ -66,12 +67,16 @@ fun CaptionSheet(
     var explanation by remember { mutableStateOf("") }
     var generating by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
+    // Sunucunun gerekçesi. "Caption üretilemedi" tek başına hiçbir şey söylemiyor; konuşmanın
+    // Redis'ten düşmesi ile modelin yanıt vermemesi aynı ekranda apayrı iki sorun.
+    var failureReason by remember { mutableStateOf<String?>(null) }
     var sharing by remember { mutableStateOf(false) }
     var shareProgress by remember { mutableStateOf<Int?>(null) }
 
     suspend fun generate(manualExplanation: String?) {
         generating = true
         failed = false
+        failureReason = null
         try {
             caption = repository.generateCaption(
                 salonId = conversation.salonId,
@@ -82,8 +87,13 @@ fun CaptionSheet(
         } catch (e: UnauthorizedException) {
             onSessionLost()
             onDismiss()
+        } catch (e: CaptionFailedException) {
+            failed = true
+            failureReason = e.serverMessage ?: "HTTP ${'$'}{e.status}"
         } catch (e: Exception) {
             failed = true
+            // Ağ/çözümleme hatası: sunucuya hiç ulaşılamamış olabilir, sınıf adı bunu ayırt ediyor.
+            failureReason = e.message ?: e::class.java.simpleName
         } finally {
             generating = false
         }
@@ -122,11 +132,20 @@ fun CaptionSheet(
                     )
                 }
 
-                failed -> Text(
-                    text = stringResource(R.string.caption_failed),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
+                failed -> Column(modifier = Modifier.padding(vertical = 16.dp)) {
+                    Text(
+                        text = stringResource(R.string.caption_failed),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    failureReason?.let { reason ->
+                        Text(
+                            text = reason,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
 
                 // No scroll of its own any more: the sheet itself scrolls, and a scrollable box
                 // inside a scrollable column fights it for the drag. Capping the height instead

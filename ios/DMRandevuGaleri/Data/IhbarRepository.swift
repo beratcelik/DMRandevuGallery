@@ -82,6 +82,25 @@ final class IhbarRepository {
         return try await post("/api/galeri/ihlal-degil", body: body)
     }
 
+    /// Bir konuşmanın karar verilmemiş videolarını TEK istekte eler.
+    ///
+    /// NEDEN TEKİL UÇ YETMEDİ: bir muhabir on beş video gönderebiliyor ve
+    /// hiçbiri ihlal olmayabilir. Tek tek elemek on beş istek demek; iki yazma
+    /// ucu TEK bir oran sınırı kovasını paylaşıyor (dakikada yirmi) ve yirmi
+    /// birinci dokunuş reddediliyor: konuşma yarım elenmiş kalıyor, ekranda
+    /// bitmiş görünüyor ve tükenen bütçe o dakikadaki GERÇEK ihbarı da
+    /// engelliyor. Toplu uçta bir istek tek hak sayılıyor.
+    ///
+    /// ONAYLANMIŞ KAYITLARI SUNUCU ATLIYOR: toplu bir hareket memura asla geri
+    /// çekme bildirimi göndermiyor. Atlananlar yanıtta sebebiyle dönüyor.
+    ///
+    /// TOPLU ONAY YOK: onay delili bir kamu birimine çıkarıyor ve tek bir
+    /// kaydırma kazasının elli ihbarı birden göndermesi kabul edilemez.
+    func rejectBulk(_ items: [IhbarItem]) async throws -> IhbarBulkRejectResponse {
+        let body = try encoder.encode(IhbarBulkRejectRequest(items: items))
+        return try await post("/api/galeri/ihlal-degil-toplu", body: body)
+    }
+
     private func post<T: Decodable>(_ path: String, body: Data) async throws -> T {
         let token = settings.ihbarToken
         // Ağa hiç çıkmadan duruyoruz: belirteçsiz istek sunucuda yalnızca

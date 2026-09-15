@@ -40,6 +40,22 @@ struct CaptionResponse: Decodable {
     var caption: String = ""
 }
 
+/// Caption ucunun hata gövdesi: `{ error, message }`.
+struct CaptionError: Decodable {
+    var error: String?
+    var message: String?
+
+    /// Ekrana yazılacak cümle; `message` sunucunun ayrıntılı olanı.
+    var reason: String? { message ?? error }
+}
+
+/// Caption üretilemedi ve sunucu nedenini söyledi. "Konuşma bulunamadı" ile "model yanıt vermedi"
+/// arasındaki fark, aynı ekranda bekleyen kişi için bir sonraki adımı belirliyor.
+struct CaptionFailedError: Error {
+    let status: Int
+    let serverMessage: String?
+}
+
 /// Thrown when the server rejects the session; the UI drops back to the login screen.
 struct UnauthorizedError: Error {}
 

@@ -112,7 +112,22 @@ data class IhbarStatusItem(
     val matchedBy: String? = null,
     val violationCode: String? = null,
     /** Eksik alanların onayı gerçekten ENGELLEYEN alt kümesi (il / tarih / medya). */
-    val blockingFields: List<String> = emptyList()
+    val blockingFields: List<String> = emptyList(),
+    /**
+     * Bu ihbara bağlı TOPLAM video sayısı.
+     *
+     * NEDEN GEREKLİ: onay KAYDIN TAMAMINI memura gönderiyor. Sağa atış tek bir
+     * videoya karar vermek gibi görünürken üç videoyu birden ihbar edebiliyor
+     * ve kart bunu söylemeden önce bilmek zorunda. Aynı sayı, elemede
+     * gösterilecek geri çekme penceresinin hangi cümleyi kuracağını da
+     * belirliyor.
+     *
+     * Varsayılan 0 = "sunucu söylemedi" (eski sunucu); kart o hâlde sayıdan
+     * hiç söz etmiyor, uydurmuyor.
+     */
+    val mediaCount: Int = 0,
+    /** Bu ihbara bağlı olup sahibin ZATEN elediği video sayısı. */
+    val eliminatedCount: Int = 0
 )
 
 /** Onay dokunuşunun sonucu. Bulunamayan video da 200 döner; hata değil, cevaptır. */
@@ -125,6 +140,10 @@ data class IhbarApproveResponse(
     val blockingFields: List<String> = emptyList(),
     /** Onayı durduran somut sebepler ("Açıklama çok kısa"); [message]'dan daha kesin. */
     val problems: List<String> = emptyList(),
+    /** Onaylanan ihbarın kaç video taşıdığı — memura giden delil sayısı. */
+    val mediaCount: Int = 0,
+    /** Onaydan önce kayıttan çıkarılan, daha önce elenmiş kardeş video sayısı. */
+    val detachedSiblings: Int = 0,
     /**
      * Sunucunun kendi Türkçe cümlesi ("İhbar onaylandı ve 3 memura iletiliyor.").
      * Kaç memura gittiği de, hangi alanın eksik olduğu da bunun içinde — o
@@ -153,7 +172,81 @@ data class IhbarRejectResponse(
     val matchedBy: String? = null,
     /** Dokunuşun gerçekten yazıldığının tek kanıtı; düğmenin rengi buna bakıyor. */
     val notViolation: Boolean = false,
+    /**
+     * Karar YALNIZCA bu videoya uygulandı mı — kayıt kalan delille ayakta mı?
+     *
+     * NEDEN AYRI BİR ALAN (mesaja bakılmıyor): ekran, kullanıcıya söyleyeceği
+     * cümleyi buna göre seçiyor. Serbest metinden çıkarım yapmak, sunucu
+     * cümlesini düzelten ilk günün sessizce yanlış şey söylemesi demekti.
+     */
+    val detached: Boolean = false,
+    /** Ayırmadan sonra kayıtta kalan video sayısı. */
+    val remainingMedia: Int = 0,
+    /** Karar anında kayda bağlı toplam video. */
+    val mediaCount: Int = 0,
     val message: String = ""
+)
+
+// ─── toplu eleme ─────────────────────────────────────────────────────────────
+
+/**
+ * Bir konuşmanın karar verilmemiş videolarını TEK istekte eleme isteği.
+ *
+ * NEDEN TOPLU BİR UÇ VAR (tekil uç dururken): bir muhabir on beş video
+ * gönderebiliyor ve hiçbiri ihlal olmayabilir. Tek tek elemek on beş istek
+ * demek; iki yazma ucu TEK bir oran sınırı kovasını paylaşıyor (dakikada
+ * yirmi) ve yirmi birinci dokunuş reddediliyor — konuşma yarım elenmiş kalıyor
+ * ve ekranda bitmiş görünüyor. Toplu uç tek çağrı = tek hak sayılıyor.
+ *
+ * TOPLU ONAY YOK VE OLMAYACAK: eleme geri alınabilir bir karar (aynı videoyu
+ * sağa atmak fikri değiştiriyor); onay ise delili bir kamu birimine çıkarıyor.
+ */
+@Serializable
+data class IhbarBulkRejectRequest(val items: List<IhbarItem>)
+
+/** Toplu elemede TEK bir videonun sonucu; öğeler İSTEK SIRASIYLA dönüyor. */
+@Serializable
+data class IhbarBulkRejectItem(
+    val key: String = "",
+    /** Sahibin kararı deftere YAZILDI mı? */
+    val applied: Boolean = false,
+    /**
+     * Kaydın kendisine dokunulmadıysa sebebi: 'onayli' | 'zayif_anahtar' |
+     * 'bulunamadi' | 'zaten'. Tanınmayan bir değer, atlanmış saymaya devam
+     * ediyor — sunucu yeni bir sebep eklediğinde uygulama çökmemeli.
+     */
+    val skipped: String? = null,
+    val state: String = "",
+    val stateLabel: String = "",
+    val notViolation: Boolean = false,
+    val detached: Boolean = false,
+    val remainingMedia: Int = 0,
+    val violationCode: String? = null,
+    val message: String = ""
+)
+
+@Serializable
+data class IhbarBulkRejectResponse(
+    val items: List<IhbarBulkRejectItem> = emptyList(),
+    /** Kararı deftere yazılan video sayısı. */
+    val applied: Int = 0,
+    /** Dokunulmayan video sayısı (onaylı, tanınmayan, zayıf anahtarlı). */
+    val skipped: Int = 0
+)
+
+/** Toplu eleme sonucunun işarete çevrilmiş hâli. */
+fun IhbarBulkRejectItem.toMark(): IhbarMark = IhbarMark(
+    phase = when {
+        // ATLANAN ÖĞE İŞARETİ DEĞİŞTİRMEMELİ: onaylı kayıt onaylı kalıyor,
+        // tanınmayan video bilinmiyor kalıyor. Toplu bir hareketin, dokunmadığı
+        // bir videonun rengini değiştirmesi en sessiz yalan olurdu.
+        skipped == "onayli" -> IhbarPhase.APPROVED
+        skipped == "bulunamadi" || skipped == "zayif_anahtar" -> IhbarPhase.PENDING
+        notViolation || state == STATE_IHLAL_DEGIL -> IhbarPhase.NOT_VIOLATION
+        else -> IhbarPhase.PENDING
+    },
+    detail = message.ifBlank { stateLabel.ifBlank { null } },
+    mediaCount = if (detached) remainingMedia else 0
 )
 
 /** Sunucunun her hata gövdesi bu biçimde: { ok:false, code, error }. */
@@ -208,6 +301,21 @@ enum class IhbarPhase {
     /** İnsan teyidi kaydedildi. YEŞİL. */
     VERIFIED,
 
+    /**
+     * Teyit alındı ama ihbar kaydı HENÜZ AÇILMADI. YEŞİL.
+     *
+     * NEDEN AYRI BİR EVRE (PENDING'den): ikisi de "kayıt yok" hâlini anlatıyor
+     * ama biri sahibin dokunuşunu taşıyor, diğeri taşımıyor. Tek evreye
+     * sıkıştırıldığında sağa atılan video soluk "kayıt hazır değil" görünüyor
+     * ve sahip aynı videoyu tekrar tekrar atıyordu — oysa dokunuş kaydedilmişti
+     * ve kayıt açılır açılmaz onaya gidecek (sunucuda galeri/finalize.ts).
+     *
+     * NEDEN VERIFIED DEĞİL: alt satırdaki cümle farklı olmak zorunda. "İhlal
+     * olarak işaretlendi" demek, ihbarın çoktan yola çıktığını ima ederdi;
+     * doğru cümle "kayıt açılınca ihbar edilecek".
+     */
+    VERIFIED_PENDING,
+
     /** İhbar onaylandı ve memurlara gidiyor. YEŞİL. */
     APPROVED,
 
@@ -254,6 +362,16 @@ data class IhbarMark(
     val phase: IhbarPhase,
     /** Sunucunun kendi cümlesi ya da durum etiketi; düğmenin alt satırı. */
     val detail: String? = null,
+    /**
+     * Bu ihbarın kaç video taşıdığı (0 = sunucu söylemedi).
+     *
+     * Ekranda iki yerde okunuyor: kartın "3 videoluk ihbar" satırı ve geri
+     * çekme penceresinin metni. Sağa atmak tek videoya karar vermek gibi
+     * görünürken kaydın tamamını gönderiyor; bunu söylemenin tek yolu bu sayı.
+     */
+    val mediaCount: Int = 0,
+    /** Bu ihbarda sahibin ZATEN elediği video sayısı. */
+    val eliminatedCount: Int = 0,
     /** Onayı engelleyen alanlar; alt satır bunlardan yazılıyor. */
     val blockingFields: List<String> = emptyList(),
     /**
@@ -263,6 +381,24 @@ data class IhbarMark(
      */
     val matchedBy: String? = null
 )
+
+/**
+ * Çipin söyleyecek bir şeyi var mı?
+ *
+ * ─── NEDEN "KARAR VERİLMEDİ" YAZMIYORUZ ────────────────────────────────────
+ * Sahip videoyu YENİ açtı; karar vermediği zaten kesin. Ekranda duran her
+ * etiket okunmayı hak etmek zorunda ve bu etiket hiçbir şey öğretmiyordu —
+ * yalnızca kararın verileceği yerde, tam da videoya bakılması gereken anda yer
+ * kaplıyordu. Görünen her çip artık bir HABER taşıyor: ihbar edildi, elendi,
+ * bilgi eksik, istek düştü, belirteç yok.
+ *
+ * NÖTR EVREDE ÇİP OLMAMASI BİLGİ KAYBI DEĞİL: kararın nasıl verileceğini
+ * kaydırmanın kendisi öğretiyor (kart parmakla hareket ediyor ve damga
+ * beliriyor), ve boş bir ekran "bu videoya henüz dokunulmadı" demenin en kısa
+ * yolu.
+ */
+val IhbarMark.saysSomething: Boolean
+    get() = phase != IhbarPhase.UNKNOWN && phase != IhbarPhase.MARKABLE
 
 private fun phaseOf(state: String, humanVerified: Boolean, notViolation: Boolean): IhbarPhase {
     // OLUMSUZ DOKUNUŞ HER ŞEYİN ÖNÜNDE. Sahip "ihlal değil" dedikten sonra
@@ -276,7 +412,11 @@ private fun phaseOf(state: String, humanVerified: Boolean, notViolation: Boolean
 
 private fun whenState(state: String, humanVerified: Boolean): IhbarPhase = when (state) {
     STATE_ONAYLANDI -> IhbarPhase.APPROVED
-    STATE_BILINMIYOR, STATE_BEKLEMEDE -> IhbarPhase.PENDING
+    // BEKLEMEDE + TEYİT = dokunuş kaydedildi, kayıt yolda. Bu ayrım olmadan
+    // sahibin sağa attığı video soluk "kayıt hazır değil" görünüyor ve aynı
+    // videoya tekrar tekrar basılıyordu.
+    STATE_BEKLEMEDE -> if (humanVerified) IhbarPhase.VERIFIED_PENDING else IhbarPhase.PENDING
+    STATE_BILINMIYOR -> IhbarPhase.PENDING
     STATE_ONAYLANAMAZ -> IhbarPhase.BLOCKED
     // Aşağıdaki üçü teyitten ÖNCE de görülebiliyor: kayıt eksik bilgili ya da
     // kapanmış olabilir ama sahip henüz videoya bakmamıştır. Teyit yokken düğme
@@ -295,6 +435,8 @@ fun IhbarStatusItem.toMark(): IhbarMark {
     val label = stateLabel.ifBlank { null }
     return IhbarMark(
         phase = phase,
+        mediaCount = mediaCount,
+        eliminatedCount = eliminatedCount,
         // Onaylanmış kayıtta ihbar kodu, kalanında sunucunun durum etiketi: kodu
         // görmek, aynı ihbarı yönetici konsolunda aramayı mümkün kılıyor.
         detail = if (phase == IhbarPhase.APPROVED) violationCode ?: label else label,
@@ -319,6 +461,7 @@ fun IhbarApproveResponse.toMark(): IhbarMark {
     return IhbarMark(
         phase = phase,
         detail = detail,
+        mediaCount = mediaCount,
         blockingFields = blockingFields,
         matchedBy = matchedBy
     )
@@ -340,6 +483,10 @@ fun IhbarRejectResponse.toMark(): IhbarMark = IhbarMark(
         IhbarPhase.PENDING
     },
     detail = message.ifBlank { stateLabel.ifBlank { null } },
+    // AYIRMADAN SONRAKİ SAYI: kayıt ayakta kaldıysa kaç video kaldığı, kapandıysa
+    // kaç video taşıdığı. Kartın "kayıt 2 videoyla devam ediyor" diyebilmesi
+    // için tek kaynak bu.
+    mediaCount = if (detached) remainingMedia else mediaCount,
     matchedBy = matchedBy
 )
 

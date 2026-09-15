@@ -1,17 +1,51 @@
 import AVFoundation
 import SwiftUI
 
-/// One customer, full screen. Horizontal swipes move between that customer's videos and never
-/// delete anything — only the vertical swipe (handled by ``GalleryViewModel``) does.
-struct ConversationPageView: View {
+/// TEK video, tam ekran.
+///
+/// ─── İKİ EKSEN DE YENİ ─────────────────────────────────────────────────────
+/// DİKEY: bir sonraki video. Aynı müşterinin videoları bittiğinde sonraki
+/// müşteriye geçiliyor ve geride bırakılan müşteri silme sırasına giriyor
+/// (karar ``GalleryViewModel/onPageSettled(pageID:)``'de, kuralı
+/// ui/FeedPages.swift'te).
+/// YATAY: KARAR. Sağa at = "bu bir ihlal, ihbar et", sola at = "ihlal değil".
+///
+/// Eskiden dikey eksen müşteriler, yatay eksen o müşterinin videoları arasında
+/// geziniyordu ve karar ekranın köşesindeki iki kapsül düğmeyle veriliyordu.
+/// Sahip yüzlerce video geziyor; kaydırma aynı kararı parmağın zaten bulunduğu
+/// yerde veriyor.
+struct VideoPageView: View {
 
     let conversation: Conversation
+    let page: FeedPage
     let isActivePage: Bool
     let isNextPage: Bool
     let playerManager: PlayerManager
     let model: GalleryViewModel
+    /// Karar verildikten sonra bir sonraki videoya geçiş.
+    ///
+    /// NEDEN ÇAĞIRANDAN GELİYOR: akışın konumu ``GalleryView``'da ve orada
+    /// kalmalı. Sayfayı buradan sürmek, her videonun kendi akışını
+    /// kaydırabilmesi demekti.
+    let onAdvance: () -> Void
 
-    @State private var mediaIndex: Int? = 0
+    // ─── KARARIN KARTI ───────────────────────────────────────────────────────
+    //
+    // Parmağın taşıdığı yol iki eksende de izleniyor: yatay karar, dikey ise
+    // kartın "savrulması". Dikeyi hiç izlemeseydik kart bir rayda kayan panel
+    // gibi dururdu.
+    @State private var dragX: CGFloat = 0
+    @State private var dragY: CGFloat = 0
+    /// Parmağın karta DOKUNDUĞU yükseklik üst yarıda mı: kartın hangi yöne
+    /// devrileceğini bu belirliyor (masadaki bir kartı itmek gibi).
+    @State private var grabbedAbove = true
+    /// Kart uçarken ikinci bir hareket alınmıyor: uçuş sırasında yapılan yeni
+    /// bir sürükleme, henüz gönderilmemiş kararı ikinci kez tetiklerdi.
+    @State private var flying = false
+    /// Eşik titreşimi sürükleme başına BİR KEZ.
+    @State private var buzzed = false
+    @State private var cardWidth: CGFloat = 0
+    @State private var cardHeight: CGFloat = 0
     @State private var downloading = false
     @State private var sharingStory = false
     @State private var sharingReels = false
@@ -26,6 +60,8 @@ struct ConversationPageView: View {
     /// değişiyor. Pencereyi açan video ile onaylanan video ayrışırsa, sahibin
     /// hiç bakmadığı bir ihbar memurdan geri çekilirdi.
     @State private var ihbarRetractIndex: Int?
+    /// Toplu eleme onayı istenirken kaç video elenecek (nil: pencere kapalı).
+    @State private var bulkDismissCount: Int?
 
     /// Percentage of the running export, or nil while nothing is being processed. Only one action
     /// can run at a time, so a single holder covers all three buttons.
@@ -64,7 +100,7 @@ struct ConversationPageView: View {
     /// time — a second one starting would wipe the first one's working files out from under it.
     private var exporting: Bool { downloading || sharingStory || sharingReels }
 
-    private var currentIndex: Int { mediaIndex ?? 0 }
+    private var currentIndex: Int { page.mediaIndex }
     private var currentRawURL: String? {
         conversation.urls.indices.contains(currentIndex) ? conversation.urls[currentIndex] : nil
     }
@@ -76,20 +112,25 @@ struct ConversationPageView: View {
         ZStack {
             Color.black
 
-            videoPager
-                // The gesture sits on the video area only. The controls are later siblings of
-                // this ZStack, so a press on one of them hit-tests to the control and never
-                // reaches here — which is what keeps holding a button from also running the video
-                // fast, the exact bug the Android build had to fix.
-                // A plain tap composes with the scroll views; a DragGesture does not. The first
-                // version paired the long press with `DragGesture(minimumDistance: 0)` to learn
-                // when the finger lifted, and that drag quietly claimed every vertical swipe —
-                // the feed stopped scrolling altogether. `onPressingChanged` reports the lift
-                // without a drag in the way.
-                // `gesture`, not `simultaneousGesture`: a simultaneous tap here recognised at the
-                // same time as the header buttons above it and swallowed their taps, so pressing a
-                // filter toggle only ever paused the video. A plain gesture yields to whatever is
-                // nearer the finger and still composes with the scroll views.
+            decisionCard
+                // Dokunma ve basılı tutma jestleri KARTI SARAN görünümde, kartın
+                // üstündeki sürükleme katmanının içinde değil. Hareket tanıyıcılar
+                // dokunuşun düştüğü görünümün ATALARINA da ulaştığı için ikisi
+                // birlikte çalışıyor; denetimler ise bu yığının üstünde ayrı
+                // kardeşler olduğundan dokunuşu önce onlar alıyor — bir düğmeye
+                // basmanın videoyu da hızlandırmasını engelleyen şey bu.
+                //
+                // NEDEN BURADA HÂLÂ DragGesture YOK: düz bir dokunuş kaydırma
+                // görünümleriyle uyumlu, DragGesture değil. İlk sürüm basılı
+                // tutmayı `DragGesture(minimumDistance: 0)` ile eşleştirmişti ve o
+                // sürükleme her dikey kaydırmayı sessizce sahiplendi — akış tümden
+                // kaymaz oldu. Yatay karar hareketi bu yüzden SwiftUI'de değil,
+                // eksen kilitli bir UIKit tanıyıcısında (bkz. CardPanCatcher).
+                //
+                // `gesture`, `simultaneousGesture` DEĞİL: eşzamanlı bir dokunuş
+                // başlıktaki düğmelerle aynı anda tanınıp onların dokunuşlarını
+                // yutuyordu, yani filtre düğmesine basmak yalnızca videoyu
+                // duraklatıyordu.
                 .gesture(tapGesture)
                 .onLongPressGesture(
                     // Deliberately never reached. `perform` turned out to fire on *release*, not
@@ -120,6 +161,7 @@ struct ConversationPageView: View {
             scrims
             centreIndicators
             header
+            railLayer
 
             // The scrubber stays up while the filter is on. Marking is aiming at a moment, and
             // a bar that hides itself three seconds in is no use for that.
@@ -135,7 +177,7 @@ struct ConversationPageView: View {
                         },
                         onScrubFinished: {
                             let target = CMTime(value: positionMS, timescale: 1000)
-                            playerManager.playerHolding(conversation.key)?.seek(to: target)
+                            playerManager.playerHolding(page.id)?.seek(to: target)
                             scrubbing = false
                             showControls()
                         },
@@ -182,20 +224,21 @@ struct ConversationPageView: View {
                 }
             }
 
-            ihbarButtons
+            ihbarChip
+            undoChip
             bottomBar
         }
         .clipped()
         .task(id: TaskKey(active: isActivePage, url: currentProxyURL)) { await pollPosition() }
         .task(id: controlsToken) { await hideControlsLater() }
         .onChange(of: insideMark) { _, inside in
-            playerManager.setDucked(key: conversation.key, ducked: inside)
+            playerManager.setDucked(key: page.id, ducked: inside)
             if inside { beeps.start() } else { beeps.stop() }
         }
         .onDisappear { beeps.stop() }
         .onChange(of: paused) { _, value in
             guard isActivePage else { return }
-            playerManager.setPaused(key: conversation.key, paused: value)
+            playerManager.setPaused(key: page.id, paused: value)
         }
         // Holding the screen runs the video fast; letting go puts it back. Reset on leaving the
         // page too, or a video swiped away mid-hold would still be racing when it came back.
@@ -246,20 +289,46 @@ struct ConversationPageView: View {
         // sıradan ve geri alınabilir bir karar (son dokunuş kazanır). Onaylanmış
         // kayıt tek istisna: orada işlem geri çekmeye dönüşüyor ve bedelini
         // uygulamanın dışında, memurun gelen kutusunda ödüyor.
+        //
+        // İKİ AYRI METİN, ÇÜNKÜ İKİ AYRI SONUÇ: kayıt birden çok video taşıyorsa
+        // karar kaydın tamamını geri ÇEKMİYOR, yalnızca bu videoyu kayıttan
+        // ÇIKARIYOR ve ihbar kalan delille memurda kalmaya devam ediyor. Tek
+        // metin, gerçekleşmeyecek bir şeyi vaat ederdi (bkz. IhbarRetractCopy).
         .alert(
-            Strings.ihbarRetractTitle,
+            IhbarRetractCopy.title(ihbarMark),
             isPresented: Binding(
                 get: { ihbarRetractIndex != nil },
                 set: { if !$0 { ihbarRetractIndex = nil } }
             ),
             presenting: ihbarRetractIndex
         ) { index in
-            Button(Strings.ihbarRetractConfirm, role: .destructive) {
+            Button(IhbarRetractCopy.confirm(ihbarMark), role: .destructive) {
+                // Onaylanmış kayıtta karar BEKLETİLMİYOR: pencere zaten sorunun
+                // kendisi ve ikinci bir geri alma penceresi, memura gidecek
+                // düzeltmeyi üç saniye daha belirsiz tutmaktan başka işe
+                // yaramazdı.
                 model.markNotViolation(conversation, mediaIndex: index)
+                onAdvance()
             }
             Button(Strings.cancel, role: .cancel) {}
         } message: { _ in
-            Text(Strings.ihbarRetractExplain)
+            Text(IhbarRetractCopy.explain(ihbarMark))
+        }
+        // Toplu eleme onayı.
+        .confirmationDialog(
+            Strings.bulkDismissTitle,
+            isPresented: Binding(
+                get: { bulkDismissCount != nil },
+                set: { if !$0 { bulkDismissCount = nil } }
+            ),
+            presenting: bulkDismissCount
+        ) { count in
+            Button(Strings.bulkDismissConfirm, role: .destructive) {
+                model.dismissAll(conversation)
+            }
+            Button(Strings.cancel, role: .cancel) {}
+        } message: { count in
+            Text(Strings.bulkDismissExplain(count))
         }
     }
 
@@ -284,59 +353,277 @@ struct ConversationPageView: View {
         return marks.contains { now >= $0.startUs && now <= $0.endUs }
     }
 
-    private var videoPager: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(Array(conversation.urls.enumerated()), id: \.offset) { index, rawURL in
-                    // Only an identity for the expired-video marker, so the raw url does just as
-                    // well when the server address will not form one.
-                    let proxyURL = repository.proxyURL(rawURL)?.absoluteString ?? rawURL
-                    ZStack {
-                        Color.black
-                        switch model.failures[proxyURL] {
-                        case .linkDead:
-                            // The link is dead, so trying it again would fail the same way — but
-                            // the server re-signs these on request, so asking for the
-                            // conversation again gets one that works. That is what this retry
-                            // does, unlike the transient one below.
-                            PlaybackRetry(message: Strings.videoExpired, busy: refreshing) {
-                                refreshing = true
-                                Task {
-                                    let renewed = await model.refreshLinks(for: conversation)
-                                    refreshing = false
-                                    if !renewed { model.toast = Strings.videoRefreshFailed }
-                                }
-                            }
+    /// Karar yüzeyi: parmağı izleyen bir KART.
+    ///
+    /// ─── NEDEN KART ────────────────────────────────────────────────────────
+    /// Sahip yüzlerce video geziyor ve karar hızlı olmalı. Elle tutulan bir kart
+    /// duygusu bunu iki yönden veriyor: hareket parmağı birebir izlediği için
+    /// karar "verilmiş" hissediliyor, ve kart eşiğe yaklaştıkça damga belirdiği
+    /// için karar parmak kalkmadan ÖNCE görülüyor — yanlış kararı ağa hiç
+    /// çıkmadan engelleyen tek fırsat bu.
+    ///
+    /// ─── JEST NEREDE ───────────────────────────────────────────────────────
+    /// Sürükleme, kartın üstünde duran görünmez bir UIKit katmanında
+    /// (``CardPanCatcher``) ve orada olmasının sebebi yazılı: SwiftUI'nin
+    /// sürükleme jesti yön bilmiyor, bu ekranda bir kez denenip dikey kaydırmayı
+    /// tümden çalmıştı. Dokunma ve basılı tutma jestleri bu yığını SARAN
+    /// görünümde duruyor ve çalışmaya devam ediyor — hareket tanıyıcılar
+    /// dokunuşun düştüğü görünümün atalarına da ulaşıyor.
+    private var decisionCard: some View {
+        ZStack {
+            Color.black
 
-                        case .transient, .sessionLost:
-                            // Nothing about this one says the video itself is bad, so it keeps
-                            // the offer of another go instead of being written off for the rest
-                            // of the session.
-                            PlaybackRetry(message: Strings.videoFailed) {
-                                model.clearFailure(proxyURL)
-                                playerManager.play(key: conversation.key, url: proxyURL)
-                            }
+            videoSurface
+                // Damga KARTIN İÇİNDE: kartla birlikte eğiliyor ve onunla
+                // uçuyor. Dışında, sabit dururken bir arayüz etiketi gibi
+                // görünüyordu; üstüne yapıştırılmış bir mühür gibi durması,
+                // kararın karta ait olduğunu söyleyen şey.
+                .overlay(alignment: .top) { stampOverlay }
+                // KÖŞELER YALNIZCA SÜRÜKLERKEN YUVARLANIYOR.
+                //
+                // Durgun hâlde video tam ekran olmak zorunda: sahip plakayı,
+                // şeridi, ışığı o karede arıyor ve kırpılmış bir köşe delilin
+                // kendisini götürebilir. Parmak değdiği anda ise kenarların
+                // yuvarlanması, ekranı bir anda ELLE TUTULAN bir nesneye
+                // çeviriyor — kartın "fiziksel" duygusunun yarısı bu kenar.
+                .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius))
+                // KART MASADAN KALKIYOR: parmak değdiği an hafifçe küçülüyor ve
+                // kenarları ekranın kenarından ayrılıyor. Yuvarlatılmış köşeyle
+                // birlikte, ekranı bir anda ELLE TUTULAN bir nesneye çeviren şey
+                // bu ikisi.
+                //
+                // KÜÇÜK (%4): daha fazlası videoyu belirgin biçimde küçültüyor ve
+                // sahip tam da o anda görüntüye bakarak karar veriyor.
+                //
+                // NOT — ANDROID'DE KÖŞE YOK, YALNIZCA BU ÖLÇEK: orada video kendi
+                // donanım katmanında çiziliyor ve üst katmanın dönüşünü alıyor
+                // ama kırpma yolunu almıyor. iOS'ta oynatıcı sıradan bir katman
+                // olduğu için köşe de yuvarlanabiliyor.
+                .scaleEffect(1 - cardLift)
+                .offset(x: dragX, y: dragY)
+                // EĞİM, PARMAĞIN TUTTUĞU YERE GÖRE TERS DÖNÜYOR: üstten tutulan
+                // kart bir yöne, alttan tutulan öteki yöne deviriliyor —
+                // masadaki bir kartı iterken olan şey. Sabit yönlü bir eğim,
+                // kartı elle tutulan bir şey değil bir animasyon gibi
+                // gösteriyordu.
+                .rotationEffect(.degrees(tiltDegrees))
 
-                        case .none:
-                            if isActivePage && currentIndex == index {
-                                PlayerLayerView(
-                                    player: playerManager.player(for: conversation.key)
-                                )
-                            } else {
-                                ProgressView().tint(.white.opacity(0.35))
-                            }
-                        }
+            CardPanCatcher(
+                enabled: model.ihbarAvailable && !flying,
+                onBegan: { location in
+                    grabbedAbove = location.y < cardHeight / 2
+                },
+                onChanged: { translation in
+                    dragX = translation.width
+                    // DİKEYİ SÖNÜMLEYEREK İZLİYORUZ: kart parmağı birebir takip
+                    // etseydi dikey sayfalayıcıyla yarışıyormuş gibi görünürdü.
+                    // Üçte bir, "kart biraz savruldu" demeye yetiyor.
+                    dragY = translation.height * Self.verticalFollow
+                    if !buzzed, abs(dragX) >= cardWidth * swipeDistanceFraction {
+                        buzzed = true
+                        // Eşik geçildi: kararın verileceğini parmak kalkmadan
+                        // önce bildiren tek sinyal.
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                    .containerRelativeFrame([.horizontal, .vertical])
-                    .id(index)
+                },
+                onEnded: { translation, velocity in
+                    buzzed = false
+                    settleCard(translation: translation, velocity: velocity)
+                }
+            )
+            .allowsHitTesting(model.ihbarAvailable && !flying)
+        }
+        .background {
+            // Kartın ölçüsü: eşik ve eğim hesabı buna dayanıyor. Ölçüm gelmeden
+            // karar verilmiyor (bkz. decisionFor).
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        cardWidth = proxy.size.width
+                        cardHeight = proxy.size.height
+                    }
+                    .onChange(of: proxy.size) { _, size in
+                        cardWidth = size.width
+                        cardHeight = size.height
+                    }
+            }
+        }
+    }
+
+    /// Sürükleme mesafesiyle artan kalkma oranı; durgun kartta sıfır.
+    private var cardLift: CGFloat {
+        min(1, abs(dragX) / Self.liftAt) * Self.lift
+    }
+
+    /// Sürükleme mesafesiyle büyüyen köşe yarıçapı; durgun kartta sıfır.
+    private var cardCornerRadius: CGFloat {
+        min(1, abs(dragX) / Self.cornerFullAt) * Self.cornerRadius
+    }
+
+    /// Kartın eğimi. Genişlik ölçülmeden sıfır: bölme hatası ve anlamsız açı yok.
+    private var tiltDegrees: Double {
+        guard cardWidth > 0 else { return 0 }
+        return Double(dragX / cardWidth) * Self.cardTiltDegrees * (grabbedAbove ? 1 : -1)
+    }
+
+    /// Sürüklenen yöne göre beliren damga.
+    ///
+    /// Damga, KARARIN kendisine değil parmağın YÖNÜNE bakıyor ve eşikten ÖNCE
+    /// beliriyor. Karara bağlasaydık ancak eşik geçildikten sonra görünürdü —
+    /// yani sahip kararının ne olacağını, kararı verdikten sonra öğrenirdi.
+    @ViewBuilder
+    private var stampOverlay: some View {
+        if model.ihbarAvailable, cardWidth > 0, abs(dragX) > Self.stampAppears {
+            let report = dragX > 0
+            HStack {
+                if report {
+                    stamp(.report)
+                    Spacer()
+                } else {
+                    Spacer()
+                    stamp(.dismiss)
                 }
             }
-            .scrollTargetLayout()
+            .padding(.horizontal, 24)
+            .padding(.top, 120 + chromeInsets.top)
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $mediaIndex)
-        .scrollIndicators(.hidden)
-        .scrollDisabled(conversation.urls.count <= 1)
+    }
+
+    private func stamp(_ decision: SwipeDecision) -> some View {
+        SwipeStamp(
+            decision: decision,
+            opacity: Double(min(1, abs(dragX) / (cardWidth * Self.stampFullAt)))
+        )
+        // Mühür gibi eğik durması, ekrana yapıştırılmış bir etiket olmadığını
+        // söylüyor.
+        .rotationEffect(.degrees(decision == .report ? -14 : 14))
+    }
+
+    private var videoSurface: some View {
+        ZStack {
+            Color.black
+            let rawURL = currentRawURL
+            let proxyURL = rawURL.flatMap { repository.proxyURL($0)?.absoluteString } ?? rawURL
+            if let proxyURL {
+                switch model.failures[proxyURL] {
+                case .linkDead:
+                    // The link is dead, so trying it again would fail the same way — but the
+                    // server re-signs these on request, so asking for the conversation again
+                    // gets one that works. That is what this retry does, unlike the transient
+                    // one below.
+                    PlaybackRetry(message: Strings.videoExpired, busy: refreshing) {
+                        refreshing = true
+                        Task {
+                            let renewed = await model.refreshLinks(for: conversation)
+                            refreshing = false
+                            if !renewed { model.toast = Strings.videoRefreshFailed }
+                        }
+                    }
+
+                case .transient, .sessionLost:
+                    // Nothing about this one says the video itself is bad, so it keeps the offer
+                    // of another go instead of being written off for the rest of the session.
+                    PlaybackRetry(message: Strings.videoFailed) {
+                        model.clearFailure(proxyURL)
+                        playerManager.play(key: page.id, url: proxyURL)
+                    }
+
+                case .none:
+                    if isActivePage {
+                        PlayerLayerView(player: playerManager.player(for: page.id))
+                    } else {
+                        ProgressView().tint(.white.opacity(0.35))
+                    }
+                }
+            } else {
+                ProgressView().tint(.white.opacity(0.35))
+            }
+        }
+    }
+
+    // MARK: - Kartın fiziği
+
+    /// Parmak kalktığında: kart ya yerine OTURUYOR ya ekrandan UÇUYOR.
+    ///
+    /// ONAYLANMIŞ KAYITTA SOLA ATIŞ TEK İSTİSNA: burada karar bir kaydı
+    /// kapatmakla kalmıyor, memura GİTMİŞ ihbarı geri çekiyor ve karşı tarafa
+    /// düzeltme bildirimi gönderiyor. Üç saniyelik geri alma penceresi bunun
+    /// için yeterli değil; kart yerine dönüyor ve soru soruluyor.
+    ///
+    /// SIRA KAYDIRMA ANINDA YAKALANIYOR: pencere açıkken akış ilerleyebiliyor ve
+    /// onay anında o anki sayfa okunsaydı, sahibin hiç bakmadığı bir ihbar
+    /// memurdan geri çekilirdi.
+    private func settleCard(translation: CGSize, velocity: CGSize) {
+        let verdict = decisionFor(
+            translation: translation.width,
+            velocity: velocity.width,
+            width: cardWidth
+        )
+
+        guard let verdict else { return settleBack() }
+
+        if ihbarMark.phase == .noToken {
+            // Belirteç yokken kaydırma ağa çıkmıyor; eksik olanı sormak tek
+            // makul davranış.
+            settleBack()
+            ihbarTokenPrompt = true
+            return
+        }
+
+        if verdict == .dismiss, ihbarMark.phase == .approved {
+            settleBack()
+            ihbarRetractIndex = page.mediaIndex
+            return
+        }
+
+        flingAway(verdict)
+    }
+
+    /// Karar verilmedi: kart yaylanarak yerine oturuyor.
+    ///
+    /// YAY, SÖNÜMÜ DÜŞÜK (0,6): bir kez hafifçe geri sekiyor — elden bırakılan
+    /// bir kartın masaya oturması bu. Kritik sönüm teknik olarak "doğru" ama
+    /// cansız; sekme, kartın bir ağırlığı olduğunu söyleyen tek şey.
+    private func settleBack() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.6)) {
+            dragX = 0
+            dragY = 0
+        }
+    }
+
+    /// Karar verildi: kart atıldığı yönde ekrandan çıkıyor, sonra akış ilerliyor.
+    ///
+    /// KARAR UÇUŞ BİTTİKTEN SONRA VERİLİYOR: kart hâlâ ekrandayken kuyruğa
+    /// yazsaydık geri alma çipi kart uçarken belirir ve sahip "neyi geri
+    /// alıyorum" diye bakacağı videoyu görmeden karar vermiş olurdu.
+    private func flingAway(_ verdict: SwipeDecision) {
+        flying = true
+        // Kararın kendisi: eşikteki hafif titreşimden AYRI ve daha ağır.
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        withAnimation(.easeOut(duration: Self.flyDuration)) {
+            dragX = (verdict == .report ? 1 : -1) * cardWidth * Self.flyDistance
+            // Uçarken hafifçe aşağı düşüyor: düz bir yatay kayma, kartı bir
+            // rayda gidiyormuş gibi gösteriyor.
+            dragY += cardWidth * Self.flyDrop
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.flyDuration))
+            model.decide(
+                conversation,
+                mediaIndex: page.mediaIndex,
+                decision: verdict == .report ? .report : .dismiss
+            )
+            onAdvance()
+            // Kart ekran dışındayken bekliyoruz: hemen sıfırlamak, akış bir
+            // sonraki videoya kayarken kartın ortaya geri zıpladığını göstermek
+            // olurdu.
+            try? await Task.sleep(for: .seconds(Self.cardResetDelay))
+            dragX = 0
+            dragY = 0
+            flying = false
+        }
     }
 
     private var tapGesture: some Gesture {
@@ -389,9 +676,9 @@ struct ConversationPageView: View {
         VStack {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    // A customer handle can be longer than the space beside three toggles. Left
-                    // to itself it pushed them off the row entirely — the face filter disappeared
-                    // — so the name is the part that gives way, and says so with an ellipsis.
+                    // Uzun bir kullanıcı adı, yanındakini satırdan itiyor. Filtreler sağ
+                    // raya indikten sonra itilecek tek şey sıradaki müşteri sayısı kaldı,
+                    // ama kural aynı: yol veren isim, ve elipsle bunu söylüyor.
                     Text("@\(conversation.clientName)")
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -408,9 +695,10 @@ struct ConversationPageView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                filterToggles
-                    // The toggles are the fixed furniture of this row; whatever is left over is
-                    // the name's.
+                // Sıradaki müşteri sayısı. Düğme DEĞİL, o yüzden raya inmedi — ve
+                // başlıkta kalması, uzun bir kullanıcı adının yaslanacağı sabit bir
+                // şey bırakıyor: yoksa elips hiç devreye girmezdi.
+                remainingCount
                     .fixedSize()
                     .layoutPriority(1)
             }
@@ -447,9 +735,15 @@ struct ConversationPageView: View {
         }
     }
 
-    private var filterToggles: some View {
-        HStack(spacing: 4) {
-            // Up here rather than in the action row below, which is already tight on width.
+    /// Filtre rayı: sağ kenarda dikey sütun.
+    ///
+    /// Instagram Reels'in beğen/yorum sütunuyla aynı yerde ve aynı ritimde. Başlıkta yatay bir
+    /// sıraydılar; orada uzun bir kullanıcı adı son düğmeyi satırdan itiyordu ve sütun
+    /// başparmağın durduğu yerde değildi.
+    ///
+    /// KONUMU `railLayer` veriyor; burada yalnızca içerik ve arka plan var.
+    private var filterToggleStack: some View {
+        VStack(spacing: Self.railGap) {
             // A face rather than the blur droplet SF Symbols offers: this sits next to a car for
             // plates, and the pair reads at a glance as "people / vehicles".
             toggle(
@@ -529,15 +823,48 @@ struct ConversationPageView: View {
                 .accessibilityIdentifier("toggleCensor")
             }
 
-            // How many customers are still waiting. The dots below already say how many videos
-            // this one has, so the per-video position is not repeated here.
-            if model.remaining > 0 {
-                Text("\(model.remaining)")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(.leading, 4)
-                    .accessibilityIdentifier("remainingCount")
+            // TOPLU ELEME: bu müşterinin karar verilmemiş videoları çoksa hepsini tek
+            // istekte elemek. İki yazma ucu tek bir oran sınırı kovasını paylaşıyor
+            // (dakikada yirmi); on beş videoyu tek tek elemek o bütçenin dörtte üçünü
+            // yakar ve aynı dakikadaki GERÇEK ihbarı da engellerdi.
+            //
+            // EN AZ İKİ VİDEO ŞARTI: tek video için toplu bir hareket, kaydırmanın
+            // zaten yaptığı işi ikinci bir yüzeyden tekrar sunmak olurdu.
+            if model.ihbarAvailable {
+                let undecided = model.undecidedIndices(conversation)
+                if undecided.count >= 2 {
+                    toggle(icon: "nosign", on: false) { bulkDismissCount = undecided.count }
+                        .accessibilityIdentifier("bulkDismiss")
+                }
             }
+
+        }
+        .padding(.leading, 28)
+        .padding(.top, 20)
+        .padding(.trailing, Self.railEdge)
+        .padding(.bottom, 12)
+        // SAĞ KENARDA SCRIM YOK: üstteki 140 ve alttaki 160 yalnızca tam genişlik
+        // bantları, arası çıplak video. Köşegen geçiş, dikdörtgenin açıkta kalan iki
+        // kenarını (sol ve üst) saydam bırakıyor. Dokunuş yutmaması şart: SwiftUI'de
+        // arka plan görünümü de vuruş testine giriyor ve tüm şeridi yutardı.
+        .background {
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.34)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// Kaç müşteri sırada bekliyor.
+    @ViewBuilder
+    private var remainingCount: some View {
+        if model.remaining > 0 {
+            Text("\(model.remaining)")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .accessibilityIdentifier("remainingCount")
         }
     }
 
@@ -558,20 +885,40 @@ struct ConversationPageView: View {
             .onTapGesture(perform: action)
     }
 
+    /// Rayın konumu: alttan çıpalı, sağ kenara yaslı.
+    ///
+    /// ALTTAN ÇIPALI, ORTADAN DEĞİL: Instagram'da da sütun alt bloğun hizasından yukarı
+    /// diziliyor. Merdiven GERİ AL çipiyle birebir aynı (`ihbarBottomPadding`), biri solda biri
+    /// sağda aynı satırda dursun diye.
+    ///
+    /// YUKARIYA TAŞMIYOR: damga (kararın adı) sağ üstte 120'de duruyor ve kart uçarken onun
+    /// üstüne çizilen bir ray, kararın parmak kalkmadan okunmasını engellerdi. Ray alt üçte
+    /// birde kaldığı sürece ikisi hiç karşılaşmıyor.
+    private var railLayer: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                filterToggleStack
+            }
+            .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
+        }
+    }
+
     private var bottomBar: some View {
         VStack {
             Spacer()
             HStack {
+                // NOKTA DİZİSİ KALKTI, YERİNE SAYI: noktalar yatay bir
+                // sayfalayıcıyı anlatıyordu ("sağa kaydır, sonraki video").
+                // Videolar artık dikey eksende ve yatay eksen KARAR demek; aynı
+                // noktalar şimdi hem var olmayan bir hareketi öğretir hem de
+                // kaydırmanın ne yaptığı hakkında yanlış bir söz verirdi.
                 if conversation.urls.count > 1 {
-                    HStack(spacing: 6) {
-                        ForEach(conversation.urls.indices, id: \.self) { index in
-                            Circle()
-                                .fill(.white.opacity(currentIndex == index ? 1 : 0.4))
-                                .frame(width: currentIndex == index ? 8 : 6)
-                        }
-                    }
-                    .accessibilityIdentifier("mediaDots")
-                    .accessibilityValue("\(conversation.urls.count)")
+                    Text(Strings.videoPosition(currentIndex + 1, conversation.urls.count))
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .accessibilityIdentifier("videoPosition")
                 }
                 Spacer()
                 actions
@@ -630,79 +977,61 @@ struct ConversationPageView: View {
         return fallback
     }
 
-    // MARK: - İhlal düğmeleri
+    // MARK: - İhbar yüzeyleri
 
-    /// Sahibin iki dokunuşu: solda "ihlal", sağda "ihlal değil".
+    /// O an ekrandaki videonun ihbar durumu — SALT OKUNUR.
     ///
-    /// Ekranın altı katmanlı: eylem şeridi en altta (0-92pt), oynatma çubuğu
-    /// 92pt'de, küfür işaretleme düğmesi 140pt'de. Bu satır o an açık olan en üst
-    /// katmanın üstüne çıkıyor; sabit bir yükseklik seçseydik çubuk açıldığı anda
-    /// ikisi üst üste binerdi.
-    ///
-    /// NEDEN İKİSİ AYNI SATIRDA (biri üstte biri altta değil): satırın iki ucu,
-    /// baş parmağın erişebildiği en uzak iki nokta. Alt alta iki kapsülde aradaki
-    /// mesafe kapsül yüksekliği kadar kalır ve dikeyde şaşan bir dokunuş, zıt
-    /// kararı verir.
-    ///
-    /// NEDEN İKİSİ DE AYNI ``IhbarMark``'I OKUYOR: bir videonun tek durumu var.
-    /// Ayrı durumlar tutsaydık "hem işaretli hem elenmiş" gibi imkânsız bir çift
-    /// çizilebilirdi.
+    /// ÜSTTE, başlığın altında: ekranın altı zaten katmanlı ve karar kaydırması
+    /// kartın TAMAMINI hareket ettiriyor — karar yüzeyiyle aynı yerde duran bir
+    /// gösterge her kaydırmada parmağın altında kalırdı.
     ///
     /// NEDEN GİZLEMEK, "DEVRE DIŞI BIRAKMAK" DEĞİL: ihbar hattı tek bir hesabı
     /// dinliyor (bkz. ``IhbarAccount``) ve öteki hesabın videosu orada hiçbir
-    /// kayıtla eşleşmiyor. Soluk ama duran bir düğme, sahibi "neden çalışmıyor"
-    /// diye uğraştırırdı; olmayan düğme ise doğru cümleyi kuruyor — bu hesap
-    /// ihbar hattına bağlı değil. Bu, iki düğme için de geçerli.
+    /// kayıtla eşleşmiyor. Soluk ama duran bir gösterge, sahibi "neden
+    /// çalışmıyor" diye uğraştırırdı; olmayan gösterge doğru cümleyi kuruyor.
     @ViewBuilder
-    private var ihbarButtons: some View {
-        if model.ihbarAvailable {
+    private var ihbarChip: some View {
+        // Çip YALNIZCA söyleyecek bir şeyi varken çiziliyor; gerekçesi
+        // IhbarMark.saysSomething başlığında.
+        if model.ihbarAvailable, ihbarMark.saysSomething {
             VStack {
-                Spacer()
-                // DİKEY YERLEŞİM — Android ile AYNI karar, ve iOS bu kararı
-                // almadığı için düğmeler dar ekranda sıkışıyordu.
-                //
-                // NEDEN YAN YANA DEĞİL: iki etiket de uzun ("İhlal olarak
-                // işaretle" / "İhlal değil") ve olumlu düğmenin metni SUNUCUDAN
-                // geliyor, yani daha da uzayabiliyor. Aynı satıra sığdırmak
-                // ikisini birden eziyordu; layoutPriority yalnızca hangisinin
-                // önce ezileceğini seçiyordu, ezilmeyi engellemiyordu.
-                //
-                // NEDEN OLUMSUZ ÜSTTE: olumlu düğmenin alt kenardan uzaklığı
-                // sabit kalsın. Başparmak oraya alışıyor; olumluyu yukarı
-                // itmek, kas hafızasıyla basan birinin yanlış düğmeye
-                // dokunması demekti.
-                VStack(alignment: .leading, spacing: 16) {
-                    IhbarNotViolationButton(
+                HStack {
+                    IhbarStatusChip(
                         mark: ihbarMark,
-                        onTap: {
-                            if ihbarMark.phase == .noToken {
-                                ihbarTokenPrompt = true
-                            } else if ihbarMark.phase == .approved {
-                                // ONAYLANMIŞ KAYIT AYRI: bu dokunuş artık yalnızca
-                                // bir kaydı kapatmıyor, memura GİTMİŞ bir ihbarı
-                                // geri çekiyor ve karşı tarafa bildirim gönderiyor.
-                                ihbarRetractIndex = currentIndex
-                            } else {
-                                model.markNotViolation(conversation, mediaIndex: currentIndex)
-                            }
-                        }
-                    )
-                    IhbarMarkButton(
-                        mark: ihbarMark,
-                        onTap: {
-                            // Belirteç yoksa dokunuş ağa çıkmıyor, doğrudan onu
-                            // istemeye gidiyor: "sessizce başarısız olmak" yerine
-                            // eksik olan şeyi sormak, düğmenin tek makul davranışı.
-                            if ihbarMark.phase == .noToken {
-                                ihbarTokenPrompt = true
-                            } else {
-                                model.markViolation(conversation, mediaIndex: currentIndex)
-                            }
-                        },
+                        onTap: { if ihbarMark.phase == .noToken { ihbarTokenPrompt = true } },
                         onLongPress: { ihbarTokenPrompt = true }
                     )
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 72 + chromeInsets.top)
+                Spacer()
+            }
+        }
+    }
+
+    /// Bekleyen kararın geri alma çipi.
+    ///
+    /// NEDEN GEREKLİ: karar verildiği anda kart uçuyor ve akış bir sonraki
+    /// videoya geçiyor — sahip kararını verdiği videoyu ARTIK GÖRMÜYOR. Geri
+    /// alma yolunun kararla aynı anda ve aynı ekranda durması gerekiyor.
+    /// (İkinci yol: o sayfaya geri kaydırmak.)
+    ///
+    /// Ekranın altı katmanlı: eylem şeridi 0-92pt, oynatma çubuğu 92pt, küfür
+    /// işaretleme düğmesi 140pt. Çip o an açık olan en üst katmanın üstüne
+    /// çıkıyor; sabit bir yükseklik, çubuk açıldığı anda üst üste binme demekti.
+    @ViewBuilder
+    private var undoChip: some View {
+        if let queued = model.pendingDecisions.latest {
+            VStack {
+                Spacer()
+                HStack {
+                    UndoChip(
+                        decision: queued.decision,
+                        onUndo: { model.undoDecision(queued.page.id) }
+                    )
+                    Spacer()
+                }
                 .padding(.horizontal, 12)
                 .padding(.bottom, ihbarBottomPadding + chromeInsets.bottom)
             }
@@ -725,15 +1054,15 @@ struct ConversationPageView: View {
     private func loadVideo() {
         guard let proxyURL = currentProxyURL else { return }
         if isActivePage {
-            playerManager.play(key: conversation.key, url: proxyURL)
+            playerManager.play(key: page.id, url: proxyURL)
         } else if isNextPage {
-            playerManager.preload(key: conversation.key, url: proxyURL)
+            playerManager.preload(key: page.id, url: proxyURL)
         }
     }
 
     private func applySpeed() {
         playerManager.setSpeed(
-            key: conversation.key,
+            key: page.id,
             speed: holding && isActivePage ? Self.holdSpeed : 1
         )
     }
@@ -743,7 +1072,7 @@ struct ConversationPageView: View {
     /// the same value.
     private func pollPosition() async {
         while isActivePage && !Task.isCancelled {
-            if let player = playerManager.playerHolding(conversation.key) {
+            if let player = playerManager.playerHolding(page.id) {
                 // Both of these are routinely not real instants yet — a player answers with an
                 // invalid time until its item is ready. Holding the last known value beats
                 // flashing a zero into the bar every time a video is swapped in.
@@ -785,7 +1114,12 @@ struct ConversationPageView: View {
                 let saved = try await downloader.saveToPhotos(
                     rawURL: rawURL,
                     clientName: conversation.clientName,
-                    options: model.exportOptions()
+                    // KUSUR DÜZELTİLDİ: argümansız çağrı, elle konan küfür
+                    // işaretlerinin dışa aktarıma hiç ulaşmaması demekti
+                    // (CaptionSheetView doğru yapıyordu, bu satırlar değil).
+                    options: model.exportOptions(
+                        conversationKey: conversation.key, mediaIndex: currentIndex
+                    )
                 ) { exportProgress = $0 }
                 model.toast = saved ? Strings.downloadDone : Strings.downloadFailed
             } catch is UnauthorizedError {
@@ -816,7 +1150,12 @@ struct ConversationPageView: View {
                 let file = try await downloader.downloadForShare(
                     rawURL: rawURL,
                     clientName: conversation.clientName,
-                    options: model.exportOptions()
+                    // KUSUR DÜZELTİLDİ: argümansız çağrı, elle konan küfür
+                    // işaretlerinin dışa aktarıma hiç ulaşmaması demekti
+                    // (CaptionSheetView doğru yapıyordu, bu satırlar değil).
+                    options: model.exportOptions(
+                        conversationKey: conversation.key, mediaIndex: currentIndex
+                    )
                 ) { exportProgress = $0 }
                 if !InstagramSharing.openStoryComposer(video: file) {
                     model.toast = Strings.shareFailed
@@ -844,23 +1183,45 @@ struct ConversationPageView: View {
                 exportProgress = nil
             }
             do {
+                // KENDİ META KİMLİĞİMİZ ALINDIĞINDA burası devreye giriyor: video
+                // fotoğraflara hiç uğramadan Reels bestecisine gidiyor. Bugün kapalı;
+                // gerekçesi InstagramSharing.reelsComposerEnabled başlığında.
+                if InstagramSharing.reelsComposerEnabled {
+                    let file = try await downloader.downloadForShare(
+                        rawURL: rawURL,
+                        clientName: conversation.clientName,
+                        options: model.exportOptions(
+                            conversationKey: conversation.key, mediaIndex: currentIndex
+                        )
+                    ) { exportProgress = $0 }
+                    exportProgress = nil
+                    // Caption besteciye de geçmiyor — hiçbir Instagram girişi metin kabul
+                    // etmiyor — yani pano yine tek yol.
+                    if let caption = try await captionOrNil(rawURL), !caption.isEmpty {
+                        InstagramSharing.copyCaption(caption)
+                    }
+                    if InstagramSharing.openReelComposer(video: file) { return }
+                    // Besteci adresi karşılamadı: bilinen yola düşülüyor.
+                }
+
                 // Saved to the photo library rather than handed over directly, because Reels can
                 // only take a video the operator picks there.
                 let saved = try await downloader.saveToPhotos(
                     rawURL: rawURL,
                     clientName: conversation.clientName,
-                    options: model.exportOptions()
+                    // KUSUR DÜZELTİLDİ: argümansız çağrı, elle konan küfür
+                    // işaretlerinin dışa aktarıma hiç ulaşmaması demekti
+                    // (CaptionSheetView doğru yapıyordu, bu satırlar değil).
+                    options: model.exportOptions(
+                        conversationKey: conversation.key, mediaIndex: currentIndex
+                    )
                 ) { exportProgress = $0 }
                 exportProgress = nil
                 guard saved else {
                     model.toast = Strings.downloadFailed
                     return
                 }
-                let caption = try? await repository.generateCaption(
-                    salonId: conversation.salonId,
-                    clientId: conversation.clientId,
-                    rawMediaURL: rawURL
-                )
+                let caption = try await captionOrNil(rawURL)
                 let hasCaption = !(caption ?? "").isEmpty
                 if let caption, hasCaption { InstagramSharing.copyCaption(caption) }
                 model.toast = hasCaption ? Strings.reelsReady : Strings.reelsReadyNoCaption
@@ -877,12 +1238,42 @@ struct ConversationPageView: View {
         }
     }
 
+    /// Caption'ı getirir, üretilemezse nil döner.
+    ///
+    /// OTURUM KAYBI YUKARI GEÇİYOR: eskiden `try?` ile çağrılıyordu ve yetkisizlik hatası da
+    /// yutuluyordu — operatöre, oturumu bittiği hâlde "caption üretilemedi" deniyordu.
+    /// Paylaşımın kendisi caption'sız bilerek sürüyor, video zaten kaydedilmiş oluyor.
+    private func captionOrNil(_ rawURL: String) async throws -> String? {
+        do {
+            return try await repository.generateCaption(
+                salonId: conversation.salonId,
+                clientId: conversation.clientId,
+                rawMediaURL: rawURL
+            )
+        } catch is UnauthorizedError {
+            throw UnauthorizedError()
+        } catch {
+            return nil
+        }
+    }
+
     /// The glyph size shared by every filter toggle, and the square each one sits in.
     private static let toggleGlyph: CGFloat = 20
     /// Long enough not to fire on a tap that switches the filter, short enough to find.
     private static let modeHold = 0.5
 
     private static let toggleTouch: CGFloat = 40
+
+    /// Filtre rayındaki simgeler arası dikey boşluk.
+    ///
+    /// 40pt kutu + 10pt = 50pt adım. Instagram'ın sütunu 68pt adımla diziliyor ama orada her
+    /// simgenin ALTINDA bir sayı satırı var; sayıyı çıkarınca kalan ritim bu.
+    private static let railGap: CGFloat = 10
+
+    /// Rayın sağ kenara uzaklığı. Ölçü kutunun değil SİMGENİN kenara uzaklığından geliyor:
+    /// Instagram'da simge mürekkebi kenardan 14-15pt içeride, 40pt kutunun içindeki 20pt simge
+    /// ise her yanından 10pt boşluk taşıyor. 4 + 10 = 14pt, aynı hiza.
+    private static let railEdge: CGFloat = 4
 
     /// How long the controls stay up once nothing is happening.
     private static let controlsLinger: Double = 3
@@ -897,6 +1288,36 @@ struct ConversationPageView: View {
     private static let touchSlop: CGFloat = 10
 
     /// How much faster a held-down video runs.
+    // ─── kartın fiziği ───────────────────────────────────────────────────────
+
+    /// Dikey hareketin karta yansıyan oranı; birebir izlemek kartı savruk gösterir.
+    private static let verticalFollow: CGFloat = 0.34
+    /// Kartın tam genişlikte eğildiği açı. Küçük tutuluyor — video izlenirken
+    /// okunaklı kalmalı.
+    private static let cardTiltDegrees: Double = 12
+    /// Damganın belirmeye başladığı yatay yol (nokta).
+    private static let stampAppears: CGFloat = 8
+    /// Damganın tam görünür olduğu mesafe — genişliğin oranı. Karar eşiğinden
+    /// (%25) KÜÇÜK: damga kararın verileceğini önceden söylemeli.
+    private static let stampFullAt: CGFloat = 0.18
+    /// Kartın tam kalktığı yatay yol (nokta).
+    private static let liftAt: CGFloat = 90
+    /// Kalkan kartın küçülme oranı.
+    private static let lift: CGFloat = 0.04
+    /// Köşelerin tam yuvarlandığı yatay yol (nokta). Kısa: kart hemen "ele geçmeli".
+    private static let cornerFullAt: CGFloat = 90
+    /// Sürüklenen kartın köşe yarıçapı.
+    private static let cornerRadius: CGFloat = 28
+    /// Kartın uçarken gittiği yol, genişliğin katı olarak — ekranı tam terk etmeli.
+    private static let flyDistance: CGFloat = 1.6
+    /// Uçarken düştüğü mesafe (genişliğin oranı): düz bir kayma ray gibi görünüyor.
+    private static let flyDrop: CGFloat = 0.12
+    /// Uçuş süresi. Uzatmak kararı yavaşlatıyor, kısaltmak hareketi görünmez kılıyor.
+    private static let flyDuration: Double = 0.26
+    /// Uçuştan sonra kartın ortaya alınması için beklenen süre; akışın bir
+    /// sonraki videoya kayması bu kadar sürüyor.
+    private static let cardResetDelay: Double = 0.16
+
     private static let holdSpeed: Float = 3
 }
 

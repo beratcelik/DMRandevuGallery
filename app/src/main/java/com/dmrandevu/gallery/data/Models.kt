@@ -40,5 +40,16 @@ data class CaptionResponse(
     val caption: String = ""
 )
 
+/**
+ * Caption ucunun hata gövdesi: `{ error, message }`. Sunucu neden üretemediğini ("Conversation
+ * not found", "No conversation messages found", LLM hatası) burada söylüyor; bu model olmadan o
+ * cümle istemcide okunmadan atılıyordu.
+ */
+@Serializable
+data class CaptionError(
+    val error: String? = null,
+    val message: String? = null
+)
+
 /** Thrown when the server rejects the session; the UI drops back to the login screen. */
 class UnauthorizedException : Exception("Not authenticated")

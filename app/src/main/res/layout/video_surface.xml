@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Oynatıcı yüzeyi — DOKU (texture) yüzeyi, varsayılan SurfaceView DEĞİL.
+
+  NEDEN XML: PlayerView'in yüzey türü yalnızca kuruluşta, öznitelikten
+  okunuyor; koddan sonradan değiştirilemiyor. Bu yüzden görünüm koddan
+  `PlayerView(ctx)` ile değil bu düzenden şişiriliyor.
+
+  NEDEN DOKU YÜZEYİ: karar kartı sürüklenirken EĞİLİYOR ve köşeleri
+  yuvarlanıyor. SurfaceView, pencerede kendi deliğini açtığı için üst
+  katmanların dönüşünü ve kırpmasını YOK SAYIYOR: çerçeve eğiliyor, içindeki
+  video dümdüz kalıyordu — kart hissini bozan tam olarak buydu. TextureView
+  normal bir görünüm gibi çiziliyor, yani dönüşü ve yuvarlatılmış köşeyi
+  olduğu gibi alıyor.
+
+  BEDELİ ÖLÇÜLÜ: doku yüzeyi bir kopyalama daha yapıyor ve pil/ısı tarafında
+  SurfaceView'den bir tık pahalı. Ekranda aynı anda tek bir video oynadığı
+  için bu maliyet kabul edildi; karşılığında kararın kendisi elle tutulur
+  hâle geliyor.
+-->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    app:surface_type="texture_view"
+    app:use_controller="false"
+    app:resize_mode="fit"
+    app:keep_content_on_player_reset="true" />

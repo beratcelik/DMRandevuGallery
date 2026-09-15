@@ -1,5 +1,6 @@
 package com.dmrandevu.gallery.ui
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -17,6 +18,7 @@ import com.dmrandevu.gallery.data.IhbarPhase
 import com.dmrandevu.gallery.data.IhbarRepository
 import com.dmrandevu.gallery.data.IhbarTokenMissingException
 import com.dmrandevu.gallery.data.UnauthorizedException
+import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.data.ihbarItemFor
 import com.dmrandevu.gallery.data.toMark
 import com.dmrandevu.gallery.media.ExportOptions
@@ -35,6 +37,25 @@ import kotlinx.coroutines.launch
 sealed interface GalleryEvent {
     data object SessionLost : GalleryEvent
     data class Toast(val messageRes: Int) : GalleryEvent
+
+    /**
+     * Sunucunun KENDİ Türkçe cümlesi.
+     *
+     * NEDEN GEREKLİ: karar artık kaydırmayla veriliyor ve kart karar verilir
+     * verilmez uçuyor — yani sunucunun cevabını gösterecek bir düğme yüzeyi
+     * yok. "Bu video kayıttan çıkarıldı; ihbar kalan 2 videoyla devam ediyor"
+     * gibi cümlelerin görünür tek kanalı bu.
+     */
+    data class ToastText(val text: String) : GalleryEvent
+
+    /**
+     * Biçimlendirilmiş dizgi kaynağı ("4 video elendi, 1 atlandı").
+     *
+     * NEDEN args bir LİSTE, vararg DEĞİL: vararg bir dizi üretiyor ve dizi
+     * eşitliği referans eşitliği demek — aynı içerikli iki olay birbirine eşit
+     * olmadığı için data class'ın equals'ı yalan söylerdi.
+     */
+    data class ToastFormat(val messageRes: Int, val args: List<Any>) : GalleryEvent
 }
 
 private data class PendingDelete(val conversation: Conversation, val job: Job)
@@ -53,6 +74,28 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     private val marks = ServiceLocator.manualMarks
 
     val items = mutableStateListOf<Conversation>()
+
+    /**
+     * Akışın DÜZ sayfa listesi: her sayfa bir video.
+     *
+     * NEDEN TÜRETİLMİŞ (ikinci bir liste tutulmuyor): iki liste er geç ayrışır
+     * ve ayrıştıkları an sayfa sırası ile konuşma sırası birbirini tutmaz —
+     * yani yanlış müşteri silinir. Tek gerçek kaynak [items].
+     */
+    val feed: List<FeedPage> by derivedStateOf { buildFeed(items) }
+
+    /**
+     * Geri alma penceresinde bekleyen kaydırma kararları.
+     *
+     * Gerekçesi [DecisionLedger] başlığında: kart karar verilir verilmez uçuyor
+     * ve üç saniyelik pencere, parmağın kaydığı hâlleri ağa hiç çıkmadan
+     * yakalıyor.
+     */
+    var pendingDecisions by mutableStateOf(DecisionLedger())
+        private set
+
+    /** Bekleyen kararların zamanlayıcıları; anahtar [FeedPage.id]. */
+    private val decisionJobs = mutableMapOf<String, Job>()
 
     /** Proxy urls that failed to play, and what kind of failure each one hit. */
     val failures = mutableStateMapOf<String, PlaybackFailure>()
@@ -207,36 +250,48 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * removed, so comparing them would delete the wrong customer.
      */
     fun onPageSettled(page: Int) {
-        val newKey = items.getOrNull(page)?.key ?: return
-        val previousKey = lastSettledKey
-        lastSettledKey = newKey
+        val current = feed.getOrNull(page) ?: return
 
-        // Re-entry from our own scrollToPage after a removal: same conversation, nothing left.
-        if (newKey == previousKey) {
-            maybeLoadMore(page)
-            return
-        }
+        // KARAR NE YAPILACAĞI SAF BİR KURALDA (ui/FeedPages.kt): silme, sistemin
+        // geri alınamaz tek yan etkisi ve düz akışta "sayfa değişti" artık
+        // "müşteri değişti" demek DEĞİL. Kuralı ViewModel'de bırakmak, hiçbir
+        // testin dokunamadığı bir yerde tutmak olurdu.
+        val action = onSettled(
+            previousConversationKey = lastSettledKey,
+            next = current,
+            conversationKeys = items.map { it.key },
+            pendingDeleteKey = pending?.conversation?.key,
+        )
+        lastSettledKey = current.conversationKey
 
-        // Swiping back onto the conversation queued for deletion is an implicit undo.
-        if (pending?.conversation?.key == newKey) {
-            cancelPending()
-            maybeLoadMore(page)
-            return
-        }
-
-        if (previousKey != null) {
-            val previousIndex = items.indexOfFirst { it.key == previousKey }
-            val newIndex = items.indexOfFirst { it.key == newKey }
-            // Forward swipe only — going back must never delete.
-            if (previousIndex != -1 && newIndex > previousIndex) {
-                queueDelete(items[previousIndex])
+        when (action) {
+            SettleAction.None -> Unit
+            SettleAction.CancelPendingDelete -> cancelPending()
+            is SettleAction.QueueDelete -> {
+                items.getOrNull(action.conversationIndex)?.let { queueDelete(it) }
             }
         }
+
+        // BU SAYFAYA GERİ DÖNMEK, KARARI DA GERİ ALIYOR. İkinci geri alma yolu
+        // (çipe dokunmak) ekranın altında duruyor; bu ise sahibin zaten yaptığı
+        // hareketin karşılığı: "bir bakayım" diye geri kaydırmak.
+        if (pendingDecisions[current.id] != null) undoDecision(current.id)
+
         maybeLoadMore(page)
     }
 
+    /**
+     * Sayfa DEĞİL konuşma sırasına bakıyor.
+     *
+     * Düz akışta sayfa sayısı konuşma sayısından çok daha büyük: tek bir
+     * müşterinin yirmi videosu varken sayfa sırasını konuşma sayısıyla
+     * karşılaştırmak, ilk müşteride bile "sona yaklaşıldı" der ve sunucudan
+     * durmadan yeni sayfa isterdi.
+     */
     private fun maybeLoadMore(page: Int) {
-        if (page >= items.size - PREFETCH_DISTANCE) loadMore()
+        val key = feed.getOrNull(page)?.conversationKey ?: return
+        val index = items.indexOfFirst { it.key == key }
+        if (index >= 0 && index >= items.size - PREFETCH_DISTANCE) loadMore()
     }
 
     /**
@@ -281,15 +336,190 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         val index = items.indexOfFirst { it.key == conversation.key }
         if (index != -1) {
             val currentPage = currentPageProvider()
+            // SİLİNEN KONUŞMANIN KAPLADIĞI SAYFA SAYISI, silmeden ÖNCE okunuyor.
+            // Düz akışta bir konuşma birden çok sayfa kaplıyor; tek sayfa geri
+            // adım atmak, izlenen videonun başka bir müşterinin videosuna
+            // kaymasıyla sonuçlanırdı.
+            val span = pageSpan(items, conversation.key)
+            val firstPage = firstPageOf(feed, conversation.key)
             items.removeAt(index)
             committedDeletes++
             _remaining.value = (_remaining.value - 1).coerceAtLeast(0)
-            // Removing an item above the viewport pulls everything up by one, so the pager has
-            // to step back in the very same frame to stay on the conversation being watched.
-            if (index < currentPage) keepCurrentPage(currentPage - 1)
+            // Görüş alanının ÜSTÜNDEKİ sayfalar kalkınca her şey yukarı kayıyor;
+            // çağrıcı aynı karede geri adım atmazsa izlenen video değişir.
+            if (firstPage in 0 until currentPage) {
+                keepCurrentPage((currentPage - span).coerceAtLeast(0))
+            }
         }
         if (pending?.conversation?.key == conversation.key) pending = null
         if (items.size <= PREFETCH_DISTANCE) loadMore()
+    }
+
+    // ── kaydırma kararları (geri alma penceresi) ──────────────────────────────
+
+    /**
+     * Sağa/sola atışın kararı: üç saniye bekletilip sonra ağa çıkıyor.
+     *
+     * ─── NEDEN BEKLETİLİYOR ────────────────────────────────────────────────
+     * Sağa atış bir ihbarı emniyet birimine gönderiyor ve bu tam olarak geri
+     * alınamıyor: geri çekme, memura "bu ihbarı dikkate almayın" bildirimi
+     * gönderiyor. Kaydırma kararı hızlandırdığı kadar yanlış kararı da
+     * hızlandırıyor; üç saniyelik pencere parmağın kaydığı hâlleri ağa hiç
+     * çıkmadan yakalıyor.
+     *
+     * ─── NEDEN KONUŞMANIN ANLIK GÖRÜNTÜSÜ SAKLANIYOR ───────────────────────
+     * Karar beklerken sahip bir sonraki müşteriye geçebiliyor ve o hareket
+     * geride bıraktığı konuşmayı silme sırasına alıyor (beş saniye). Karar
+     * uygulanırken anahtarla aransaydı — liste artık o konuşmayı taşımıyor —
+     * hiçbir şey bulunamaz ve karar sessizce kaybolurdu.
+     *
+     * ÜÇ SANİYE < BEŞ SANİYE bilerek: karar, konuşmanın silinmesinden önce
+     * yola çıkıyor.
+     */
+    fun decide(conversation: Conversation, mediaIndex: Int, decision: SwipeOutcome) {
+        // Kapı burada da duruyor: çizimi gizlemek bir görünüm kararı, bu istek
+        // ise emniyete giden bir kayıt — çağıranın dikkatine bırakılamaz.
+        if (!ihbarEnabled) return
+
+        val page = FeedPage(conversation.key, mediaIndex)
+        // Aynı sayfaya ikinci karar: öncekinin zamanlayıcısı iptal, yerine yenisi.
+        // Sahip fikrini değiştirdiyse ağa yalnızca son kararı çıkmalı.
+        decisionJobs.remove(page.id)?.cancel()
+        pendingDecisions = pendingDecisions.put(QueuedDecision(page, conversation, decision))
+        decisionJobs[page.id] = viewModelScope.launch {
+            delay(DECISION_WINDOW_MS)
+            fireDecision(page.id)
+        }
+    }
+
+    /** Geri alma: çipe dokunmak ya da o sayfaya geri kaydırmak. */
+    fun undoDecision(pageId: String) {
+        val job = decisionJobs.remove(pageId) ?: return
+        job.cancel()
+        pendingDecisions = pendingDecisions.remove(pageId)
+        viewModelScope.launch { _events.send(GalleryEvent.Toast(R.string.swipe_undone)) }
+    }
+
+    /**
+     * Bekleyen kararları ANINDA gönderir — uygulamadan çıkılırken.
+     *
+     * Silme kuyruğundaki [commitPendingNow] ile aynı gerekçe: kaydırıp ana
+     * ekrana basmak, kararı sessizce yutmamalı.
+     */
+    fun commitDecisionsNow() {
+        val waiting = pendingDecisions.all()
+        decisionJobs.values.forEach { it.cancel() }
+        decisionJobs.clear()
+        pendingDecisions = pendingDecisions.clear()
+        waiting.forEach(::apply)
+    }
+
+    private fun fireDecision(pageId: String) {
+        val queued = pendingDecisions[pageId] ?: return
+        decisionJobs.remove(pageId)
+        pendingDecisions = pendingDecisions.remove(pageId)
+        apply(queued)
+    }
+
+    private fun apply(queued: QueuedDecision) {
+        when (queued.decision) {
+            SwipeOutcome.REPORT -> markViolation(queued.conversation, queued.page.mediaIndex)
+            SwipeOutcome.DISMISS -> markNotViolation(queued.conversation, queued.page.mediaIndex)
+        }
+    }
+
+    /**
+     * Bu konuşmada HENÜZ KARAR VERİLMEMİŞ videoların sıraları.
+     *
+     * Toplu eleme yalnızca bunlara dokunuyor: onaylanmış, elenmiş ya da isteği
+     * yolda olan bir videoyu toplu bir hareketle yeniden karara bağlamak,
+     * sahibin tek tek verdiği kararları toplu bir dokunuşla ezmek olurdu.
+     */
+    fun undecidedIndices(conversation: Conversation): List<Int> =
+        conversation.urls.indices.filter { index ->
+            // Bekleyen bir karar da "karar verilmiş" sayılıyor: üç saniye sonra
+            // dolacak ve toplu elemenin üstüne yazacaktı.
+            if (pendingDecisions[FeedPage(conversation.key, index).id] != null) return@filter false
+            when (ihbarMark(conversation.key, index).phase) {
+                IhbarPhase.NOT_VIOLATION, IhbarPhase.APPROVED, IhbarPhase.VERIFIED,
+                IhbarPhase.VERIFIED_PENDING, IhbarPhase.BUSY, IhbarPhase.REJECTING,
+                IhbarPhase.NO_TOKEN -> false
+                else -> true
+            }
+        }
+
+    /**
+     * Konuşmanın karar verilmemiş videolarını TEK istekte eler.
+     *
+     * NEDEN TEK İSTEK: iki yazma ucu tek bir oran sınırı kovasını paylaşıyor
+     * (dakikada yirmi). On beş videoyu tek tek elemek o bütçenin dörtte üçünü
+     * yakıyor ve aynı dakikadaki GERÇEK ihbarı da engelliyor.
+     *
+     * ÖNCE BEKLEYEN KARARLAR İPTAL EDİLİYOR: aksi hâlde üç saniye sonra dolan
+     * bir olumlu karar toplu elemenin üstüne yazardı (sunucuda son dokunuş
+     * kazanıyor) ve bir de boşuna çıkarım ısmarlardı.
+     */
+    fun dismissAll(conversation: Conversation) {
+        if (!ihbarEnabled) return
+        pendingDecisions.of(conversation.key).forEach { undoDecision(it.page.id) }
+
+        val indices = undecidedIndices(conversation)
+        if (indices.isEmpty()) return
+        if (!ihbar.hasToken) {
+            indices.forEach { index ->
+                ihbarMarks[ihbarKey(conversation.key, index)] = NO_TOKEN_MARK
+            }
+            return
+        }
+
+        indices.forEach { index ->
+            ihbarMarks[ihbarKey(conversation.key, index)] = IhbarMark(IhbarPhase.REJECTING)
+        }
+
+        viewModelScope.launch {
+            val answers = try {
+                ihbar.rejectBulk(indices.map { ihbarItemFor(conversation, it) })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IhbarTokenMissingException) {
+                indices.forEach { ihbarMarks[ihbarKey(conversation.key, it)] = NO_TOKEN_MARK }
+                return@launch
+            } catch (e: IhbarException) {
+                indices.forEach {
+                    ihbarMarks[ihbarKey(conversation.key, it)] =
+                        IhbarMark(IhbarPhase.REJECT_ERROR, e.message)
+                }
+                _events.send(GalleryEvent.ToastText(e.message ?: ""))
+                return@launch
+            } catch (e: Exception) {
+                // YARIM UYGULANMIŞ OLABİLİR: sunucu bazı öğeleri işleyip
+                // düşmüş olabilir ve elimizde hangilerinin işlendiği bilgisi
+                // yok. İşaretleri uydurmak yerine SUNUCUYA YENİDEN SORUYORUZ —
+                // ekranın gerçeği göstermesinin tek yolu bu.
+                indices.forEach { ihbarMarks.remove(ihbarKey(conversation.key, it)) }
+                refreshIhbar(listOf(conversation))
+                _events.send(GalleryEvent.Toast(R.string.bulk_dismiss_failed))
+                return@launch
+            }
+
+            // Yanıt İSTEK SIRASIYLA dönüyor. Uzunluk tutmuyorsa HİÇBİR işaret
+            // boyanmıyor ve durum yeniden soruluyor: kayan bir liste yanlış
+            // videoyu elenmiş gösterir ve bu, fark edilmesi en zor hata türü.
+            if (answers.items.size != indices.size) {
+                indices.forEach { ihbarMarks.remove(ihbarKey(conversation.key, it)) }
+                refreshIhbar(listOf(conversation))
+                return@launch
+            }
+            indices.forEachIndexed { position, index ->
+                ihbarMarks[ihbarKey(conversation.key, index)] = answers.items[position].toMark()
+            }
+            _events.send(
+                GalleryEvent.ToastFormat(
+                    R.string.bulk_dismiss_result,
+                    listOf(answers.applied, answers.skipped),
+                )
+            )
+        }
     }
 
     // ── ihbar köprüsü ─────────────────────────────────────────────────────────────
@@ -409,11 +639,17 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // eleyen sahibin geri alma yolu tam olarak burası. Son dokunuş kazanıyor.
         // Olumsuz istek YOLDAYKEN ise susuyoruz — iki isteğin yarışması,
         // sunucuda hangisinin sonuncu sayılacağını ağ gecikmesine bırakırdı.
-        if (current.phase == IhbarPhase.BUSY ||
-            current.phase == IhbarPhase.REJECTING ||
-            current.phase == IhbarPhase.VERIFIED ||
-            current.phase == IhbarPhase.APPROVED
-        ) {
+        // SESSİZ YUTMA YOK ARTIK. Düğme çağında yutulan dokunuşun geri bildirimi
+        // düğmenin DEĞİŞMEYEN rengiydi; kaydırmada kart uçup gidiyor ve ekranda
+        // hiçbir iz kalmıyor. Sahip kaydırmayı tekrarlıyor, olumsuz yönde
+        // tekrarladığında ise memura geri çekme bildirimi çıkıyor.
+        val blocked = when (current.phase) {
+            IhbarPhase.BUSY, IhbarPhase.REJECTING -> R.string.ihbar_in_flight
+            IhbarPhase.VERIFIED, IhbarPhase.APPROVED -> R.string.ihbar_already_reported
+            else -> null
+        }
+        if (blocked != null) {
+            viewModelScope.launch { _events.send(GalleryEvent.Toast(blocked)) }
             return
         }
         if (!ihbar.hasToken) {
@@ -463,10 +699,13 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // (VERIFIED/APPROVED) kayıtlar bu listede YOK: bir ihbarı memurdan geri
         // çekmenin tek yolu bu düğme ve sunucu o yolu (retractViolation)
         // destekliyor.
-        if (current.phase == IhbarPhase.REJECTING ||
-            current.phase == IhbarPhase.BUSY ||
-            current.phase == IhbarPhase.NOT_VIOLATION
-        ) {
+        val blocked = when (current.phase) {
+            IhbarPhase.BUSY, IhbarPhase.REJECTING -> R.string.ihbar_in_flight
+            IhbarPhase.NOT_VIOLATION -> R.string.ihbar_already_dismissed
+            else -> null
+        }
+        if (blocked != null) {
+            viewModelScope.launch { _events.send(GalleryEvent.Toast(blocked)) }
             return
         }
         if (!ihbar.hasToken) {
@@ -549,7 +788,33 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
         // The old links are gone, and so is anything remembered about them failing.
         conversation.urls.forEach { failures.remove(repo.proxyUrl(it)) }
+
+        // ─── VİDEO SAYISI DEĞİŞTİYSE SAYFA DÜZENİ KAYIYOR ────────────────────
+        //
+        // Düz akışta her video bir sayfa; taze konuşma farklı sayıda video
+        // taşıyorsa ondan SONRAKİ her sayfa kayar. Ayrıca hem ihbar işaretleri
+        // hem elle küfür işaretleri SIRAYA çıpalı ("anahtar#sıra") — sayı
+        // değiştiğinde o işaretler başka videoların üstünde görünürdü, ki bu
+        // fark edilmesi en zor hata türü.
+        val countChanged = fresh.urls.size != conversation.urls.size
+        if (countChanged) {
+            conversation.urls.indices.forEach { ihbarMarks.remove(ihbarKey(conversation.key, it)) }
+        }
+
         items[index] = fresh
+
+        if (countChanged) {
+            // Aynı videoda kalmaya çalışıyoruz; video artık yoksa konuşmanın
+            // son videosuna düşülüyor.
+            val page = currentPageProvider()
+            val onThis = feed.getOrNull(page)?.conversationKey == conversation.key
+            if (onThis) {
+                val mediaIndex = feed[page].mediaIndex.coerceAtMost(fresh.urls.size - 1)
+                val first = firstPageOf(buildFeed(items), conversation.key)
+                if (first >= 0 && mediaIndex >= 0) keepCurrentPage(first + mediaIndex)
+            }
+            refreshIhbar(listOf(fresh))
+        }
         return true
     }
 
@@ -634,6 +899,15 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     companion object {
         const val UNDO_WINDOW_MS = 5_000L
+
+        /**
+         * Kaydırma kararının ağa çıkmadan önce beklediği süre.
+         *
+         * SİLME PENCERESİNDEN (5 sn) KISA, BİLEREK: karar, konuşmanın
+         * silinmesinden önce yola çıkıyor. Uzatmak sahibi bekletir, kısaltmak
+         * geri alma çipini okunamayacak kadar kısa ömürlü yapar.
+         */
+        const val DECISION_WINDOW_MS = 3_000L
         const val PAGE_SIZE = 5
         const val PREFETCH_DISTANCE = 3
         /** Covers the server-side index rebuild, which the first request only triggers. */

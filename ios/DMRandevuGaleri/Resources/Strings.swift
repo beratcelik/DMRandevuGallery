@@ -117,6 +117,49 @@ enum Strings {
     static let ihbarTokenSave = "Kaydet"
     static let cancel = "Vazgeç"
 
+    // MARK: - Kaydırarak karar
+    //
+    // Android ile BİREBİR aynı metinler: aynı kararı iki telefonda iki farklı
+    // cümleyle anlatmak, sahibin hangi uygulamada ne yaptığını hatırlamasını
+    // gerektirirdi.
+
+    static let swipeReport = "İHBAR ET"
+    static let swipeDismiss = "İHLAL DEĞİL"
+    static let swipeReported = "İhbar ediliyor"
+    static let swipeDismissed = "Eleniyor"
+    static let swipeUndo = "Geri al"
+    static let swipeUndone = "Karar geri alındı"
+    static func videoPosition(_ index: Int, _ total: Int) -> String { "\(index)/\(total)" }
+    static let ihbarVerifiedPending = "Teyit alındı"
+    static let ihbarVerifiedPendingDetail = "Kayıt açılınca ihbar edilecek"
+    static func ihbarMediaCount(_ count: Int) -> String { "\(count) videoluk ihbar" }
+    static let ihbarAlreadyReported = "Bu video zaten ihbar edildi"
+    static let ihbarAlreadyDismissed = "Bu video zaten elendi"
+    static let ihbarInFlight = "İstek yolda — bekleyin"
+
+    // MARK: - Toplu eleme
+
+    static let bulkDismiss = "Tümünü ele"
+    static let bulkDismissTitle = "Bu müşterinin videoları elensin mi?"
+    static func bulkDismissExplain(_ count: Int) -> String {
+        "\(count) video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; "
+        + "onları geri çekmek için tek tek elemeniz gerekir."
+    }
+    static let bulkDismissConfirm = "Hepsini ele"
+    static func bulkDismissResult(_ applied: Int, _ skipped: Int) -> String {
+        "\(applied) video elendi, \(skipped) atlandı"
+    }
+    static let bulkDismissFailed = "Toplu eleme başarısız — tekrar deneyin"
+
+    // MARK: - Geri çekme penceresi: kayıtta başka video varsa metin değişiyor
+
+    static let ihbarRetractDetachTitle = "Bu video ihbardan çıkarılsın mı?"
+    static func ihbarRetractDetachExplain(_ count: Int) -> String {
+        "Bu ihbar \(count) video taşıyor ve memurlara iletildi. Yalnızca bu video kayıttan "
+        + "çıkarılacak; ihbar kalan videolarla memurda kalmaya devam edecek."
+    }
+    static let ihbarRetractDetachConfirm = "Videoyu çıkar"
+
     // MARK: - Playback
 
     static func playbackSpeed(_ times: Int) -> String { "\(times)×" }
@@ -135,4 +178,35 @@ enum Strings {
     static let sharePreparing = "Video hazırlanıyor…"
     static let shareFailed = "Paylaşım başarısız"
     static let close = "Kapat"
+
+    // MARK: - Akış tanıtımı (kurulum başına bir kez)
+
+    static let tourTitle = "Nasıl kullanılır"
+    static let tourGestures = "Hareketler"
+    static let tourButtons = "Düğmeler"
+    static let tourDone = "Anladım"
+
+    static let tourRightTitle = "Sağa at · İhbar et"
+    static let tourRightDetail = "Videoda kural ihlali var. Karar üç saniye bekliyor; o sürede \"Geri al\"a basmak ya da videoya geri kaydırmak iptal ediyor."
+    static let tourLeftTitle = "Sola at · İhbar etme"
+    static let tourLeftDetail = "Video ihbardan düşüyor. Birden çok videolu bir ihbarda yalnızca bu video ayrılıyor, kalanı memurda duruyor."
+    static let tourUpTitle = "Yukarı kaydır · Sonraki video"
+    static let tourUpDetail = "Aynı müşterinin sıradaki videosu. Videoları bitince sonraki müşteriye geçiyor ve geride kalan konuşma siliniyor."
+    static let tourBackTitle = "Aşağı kaydır · Vazgeç"
+    static let tourBackDetail = "Karar verdiğin videoya geri dönmek kararı iptal ediyor; ayrıldığın müşteriye dönmek silmeyi iptal ediyor."
+    static let tourBackDetailPlain = "Ayrıldığın müşteriye beş saniye içinde geri dönmek silmeyi iptal ediyor."
+    static let tourTapTitle = "Dokun · Duraklat"
+    static let tourTapDetail = "Bir daha dokunmak devam ettiriyor. Dokunuş aynı zamanda ilerleme çubuğunu getiriyor."
+    static let tourHoldTitle = "Basılı tut · 3× hızlı"
+    static let tourHoldDetail = "Parmağını kaldırınca normal hıza dönüyor."
+
+    static let tourFaceDetail = "Dışa aktarılan videoda yüzleri bulanıklaştırır."
+    static let tourPlateDetail = "Plakaları bulanıklaştırır. Uzun basmak hızlı ile titiz arasında geçiş yapar; köşedeki şimşek hızlı olduğunu gösterir."
+    static let tourWatermarkDetail = "Videoya hesap filigranı basar. Oynatıcıda da görünür: burada ne görüyorsan dışa aktarılan da odur."
+    static let tourCensorDetail = "Küfürleri bipler. Uzun basmak otomatik ile elle arasında geçiş yapar; ilk açılışta model dosyalarını indirir."
+    static let tourBulkDetail = "Bu müşterinin karar verilmemiş videolarının hepsini tek seferde eler. Yalnızca en az iki video varken çıkar."
+    static let tourDownloadDetail = "Videoyu seçili filtrelerle telefona kaydeder."
+    static let tourStoryDetail = "Videoyu doğrudan Instagram Hikaye düzenleyicisine verir."
+    static let tourReelsDetail = "Videoyu fotoğraflara kaydeder ve caption'ı panoya kopyalar; Reels'te videoyu seçip yapıştırırsın."
+    static let tourCaptionDetail = "Konuşmadan yapay zekâ ile haber metni üretir."
 }

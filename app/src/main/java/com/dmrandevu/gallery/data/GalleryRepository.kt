@@ -1,5 +1,6 @@
 package com.dmrandevu.gallery.data
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -140,7 +141,20 @@ class GalleryRepository(
             .build()
         val slowClient = client.newBuilder().readTimeout(90, TimeUnit.SECONDS).build()
         slowClient.newCall(request).execute().use { response ->
-            json.decodeFromString<CaptionResponse>(response.requireBody()).caption
+            if (response.code == 401) throw UnauthorizedException()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                // Sunucu neden üretemediğini gövdede yazıyor, ama bu satır eskiden gövdeyi okumadan
+                // "HTTP 404" diye atıyordu: sayfada yalnızca "Caption üretilemedi" kalıyor, logcat'te
+                // hiçbir iz olmuyordu. Sebep ancak sunucu günlüğünden okunabiliyordu — yani telefonda
+                // arıza aramanın hiçbir yolu yoktu. Gerekçe artık hem logcat'te hem ekranda.
+                val reason = runCatching { json.decodeFromString<CaptionError>(text) }
+                    .getOrNull()
+                    ?.let { it.message ?: it.error }
+                Log.w(CAPTION_TAG, "generate-caption HTTP ${'$'}{response.code}: ${'$'}{reason ?: text.take(200)}")
+                throw CaptionFailedException(response.code, reason)
+            }
+            json.decodeFromString<CaptionResponse>(text).caption
         }
     }
 
@@ -155,6 +169,8 @@ class GalleryRepository(
     }
 
     private companion object {
+        const val CAPTION_TAG = "GalleryCaption"
+
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         /** Handle → Instagram id, for servers without /admin/media-gallery-resolve. */
@@ -166,3 +182,13 @@ class GalleryRepository(
 }
 
 class AccountNotFoundException : Exception("Account not found")
+
+/**
+ * Caption üretilemedi ve sunucu bunun nedenini söyledi. [serverMessage] doğrudan kullanıcıya
+ * gösteriliyor: "konuşma bulunamadı" ile "yapay zekâ yanıt vermedi" arasındaki fark, aynı ekranda
+ * bekleyen kişi için bir sonraki adımı belirliyor.
+ */
+class CaptionFailedException(
+    val status: Int,
+    val serverMessage: String?
+) : Exception("Caption failed: HTTP ${'$'}status ${'$'}{serverMessage.orEmpty()}")

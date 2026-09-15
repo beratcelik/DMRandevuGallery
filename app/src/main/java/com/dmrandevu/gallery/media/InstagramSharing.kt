@@ -24,11 +24,42 @@ object InstagramSharing {
 
     const val PACKAGE = "com.instagram.android"
 
-    /** Public Meta app identifier; Instagram requires it to attribute the incoming share. */
-    private const val SOURCE_APPLICATION = "685976850839286"
+    /**
+     * Meta uygulama kimliğimiz. Instagram gelen paylaşımı BUNUNLA tanıyor.
+     *
+     * Bir süre burada Meta'nın örnek belgelerinden gelen herkese açık bir kimlik
+     * (685976850839286) duruyordu; com.dmrandevu.gallery adına kayıtlı olmadığı için Instagram
+     * paylaşımı kendi penceresinde reddediyordu ("bu uygulama ... desteklemiyor" /
+     * "doğrulanmadı"). Hikaye düğmesinde görülen uyarının sebebi oydu.
+     *
+     * KİMLİĞİN ÇALIŞMASI, uygulamanın Meta panelinde CANLI modda olmasına bağlı: geliştirme
+     * modunda yalnızca uygulamada rolü olan hesaplar geçiyor, yani kendi hesabınızla yapılan
+     * sınama hiçbir şey kanıtlamıyor. Rolü olmayan bir Instagram hesabıyla denenmeli.
+     */
+    const val META_APP_ID = "1059486250258693"
+
+    /**
+     * Reels bestecisini doğrudan açmayı dene.
+     *
+     * AÇIK. Kapalıyken video önce galeriye kaydediliyor ve Reels'te elle seçiliyordu; artık
+     * besteci doğrudan açılıyor.
+     *
+     * BİLİNEN RİSK: Instagram kimliği bestecinin İÇİNDE doğruluyor ve reddettiğini bize
+     * SÖYLEMİYOR. [openReelComposer] yalnızca "Instagram bu niyeti hiç karşılamadı" durumunda
+     * false dönüyor; kimlik reddedilirse niyet karşılanmış sayılıyor, operatör Instagram'da bir
+     * hata penceresiyle kalıyor ve video galeride DEĞİL (besteci yolu oraya hiç yazmıyor).
+     * O hâlde bu bayrağı kapatmak bilinen yola geri döndürüyor.
+     */
+    const val REELS_COMPOSER_ENABLED = true
 
     private const val ACTION_STORY = "com.instagram.share.ADD_TO_STORY"
     private const val ACTION_REEL = "com.instagram.share.ADD_TO_REEL"
+
+    /**
+     * Kimliğin belgelenmiş anahtarı. Eski `source_application` hâlâ gönderiliyor çünkü eski
+     * Instagram yapıları yalnızca onu okuyor; tanımadığı bir ekstra zaten yok sayılıyor.
+     */
+    private const val EXTRA_APP_ID = "com.instagram.platform.extra.APPLICATION_ID"
 
     fun isInstalled(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(PACKAGE, 0) }.isSuccess
@@ -38,15 +69,27 @@ object InstagramSharing {
         launch(context, video, ACTION_STORY, "video/mp4")
 
     /**
+     * Reels bestecisini videoyla açar. Yalnızca [REELS_COMPOSER_ENABLED] açıkken çağrılmalı.
+     *
+     * `false` dönmesi "Instagram bu niyeti karşılamadı" demek; kimliği reddetmesi bundan
+     * AYRI bir şey ve buradan görünmüyor — o yüzden çağıranın her hâlükârda galeriye kaydeden
+     * yolu elinde tutması gerekiyor.
+     */
+    fun openReelComposer(context: Context, video: File): Boolean =
+        launch(context, video, ACTION_REEL, "video/*")
+
+    /**
      * Opens Instagram so a Reel can be created from a video already sitting in the phone's
      * gallery, with the caption waiting on the clipboard.
      *
-     * There is no way to hand a video straight to the Reels composer: `ADD_TO_REEL` is only
-     * honoured for apps Meta approved for "Sharing to Reels", and an unapproved caller is
-     * silently bounced to Stories or the home feed (verified on Instagram 444.x from this app,
-     * from a direct component launch, and from the shell). Instagram's share targets are not a
-     * way around it either — Samsung's share sheet collapses them into a single entry that
-     * lands in Direct. So the video is saved to the gallery first and picked there instead.
+     * Reels bestecisi bu yoldan AÇILMIYOR ve bunun sebebi bir Meta onayı değil: `ADD_TO_REEL`
+     * kendi Meta uygulama kimliğimizi istiyor, elimizdeki kimlik bizim değil ve Instagram
+     * tanımadığı kimlikle gelen paylaşımı kendi penceresinde reddediyor (Instagram 444.x
+     * üzerinde bu uygulamadan, doğrudan bileşen açarak ve kabuktan denendi). Instagram'ın
+     * paylaşım hedefleri de kaçış yolu değil — Samsung'un paylaşım sayfası hepsini tek bir
+     * girdiye indiriyor ve Direct'e düşürüyor. Bu yüzden video önce galeriye kaydediliyor ve
+     * Reels'te oradan seçiliyor. Kendi kimliğimiz alındığında [REELS_COMPOSER_ENABLED]
+     * açılarak besteci yolu devreye giriyor; ayrıntısı [META_APP_ID] başlığında.
      */
     fun openInstagram(context: Context): Boolean {
         val launch = context.packageManager.getLaunchIntentForPackage(PACKAGE) ?: return false
@@ -70,7 +113,9 @@ object InstagramSharing {
         context.grantUriPermission(PACKAGE, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val intent = Intent(action).apply {
             setDataAndType(uri, mimeType)
-            putExtra("source_application", SOURCE_APPLICATION)
+            putExtra("source_application", META_APP_ID)
+            putExtra(EXTRA_APP_ID, META_APP_ID)
+            putExtra(Intent.EXTRA_STREAM, uri)
             setPackage(PACKAGE)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

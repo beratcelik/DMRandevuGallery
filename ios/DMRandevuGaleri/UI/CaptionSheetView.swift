@@ -13,6 +13,8 @@ struct CaptionSheetView: View {
     @State private var explanation = ""
     @State private var generating = true
     @State private var failed = false
+    // Sunucunun gerekçesi. "Caption üretilemedi" tek başına hiçbir şey söylemiyor.
+    @State private var failureReason: String?
     @State private var sharing = false
     @State private var shareProgress: Int?
     @State private var shareFile: URL?
@@ -32,7 +34,14 @@ struct CaptionSheetView: View {
                     }
                     .padding(.vertical, 24)
                 } else if failed {
-                    Text(Strings.captionFailed)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Strings.captionFailed)
+                        if let failureReason {
+                            Text(failureReason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                         .foregroundStyle(.red)
                         .padding(.vertical, 16)
                 } else {
@@ -104,6 +113,7 @@ struct CaptionSheetView: View {
     private func generate(_ manualExplanation: String?) async {
         generating = true
         failed = false
+        failureReason = nil
         defer { generating = false }
         do {
             caption = try await repository.generateCaption(
@@ -115,8 +125,12 @@ struct CaptionSheetView: View {
         } catch is UnauthorizedError {
             onSessionLost()
             dismiss()
+        } catch let error as CaptionFailedError {
+            failed = true
+            failureReason = error.serverMessage ?? "HTTP \(error.status)"
         } catch {
             failed = true
+            failureReason = error.localizedDescription
         }
     }
 

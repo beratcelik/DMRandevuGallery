@@ -131,4 +131,86 @@ final class IhbarNotViolationTests: XCTestCase {
         XCTAssertEqual(mark.phase, .markable)
         XCTAssertNil(mark.matchedBy)
     }
+
+    /// ÇIKARIM HENÜZ BİTMEMİŞKEN VERİLEN OLUMLU KARAR.
+    ///
+    /// NEDEN TEST EDİLİYOR: bu hâl istisna değil, sağa atışın NORMAL yolu —
+    /// çıkarım iki saatlik sessizlik penceresinde bekliyor, sahip ise videoyu
+    /// izler izlemez karar veriyor. Tek evreye ("kayıt hazır değil")
+    /// sıkıştırıldığında kart soluk görünüyor ve sahip aynı videoyu tekrar
+    /// tekrar atıyordu; oysa dokunuş kaydedilmiş ve kayıt açılır açılmaz onaya
+    /// gidecek.
+    func testVerifiedButNotYetExtractedHasItsOwnPhase() throws {
+        let mark = try status(
+            #"{"state":"beklemede","stateLabel":"Çıkarım sürüyor","humanVerified":true}"#
+        ).mark
+        XCTAssertEqual(mark.phase, .verifiedPending)
+
+        // Dokunulmamış video aynı durumda SOLUK kalıyor: teyit taşımıyor.
+        let untouched = try status(
+            #"{"state":"beklemede","stateLabel":"Çıkarım sürüyor"}"#
+        ).mark
+        XCTAssertEqual(untouched.phase, .pending)
+    }
+
+    /// Kaydın kaç video taşıdığı istemciye ULAŞIYOR.
+    ///
+    /// Onay kaydın TAMAMINI memura gönderiyor; sağa atış tek videoya karar
+    /// vermek gibi görünürken üç videoyu birden ihbar edebiliyor. Sayı
+    /// taşınmazsa ekranın bunu söylemesinin hiçbir yolu yok.
+    func testMediaCountsReachTheMark() throws {
+        let mark = try status(
+            #"{"state":"inceleniyor","mediaCount":3,"eliminatedCount":1}"#
+        ).mark
+        XCTAssertEqual(mark.mediaCount, 3)
+        XCTAssertEqual(mark.eliminatedCount, 1)
+    }
+
+    /// Ayırma: kayıt ayakta kaldığında işaret KALAN video sayısını taşıyor.
+    /// Geri çekme penceresinin metni buna bakıyor; yanlış sayı, gerçekleşmeyecek
+    /// bir şeyi vaat etmek olurdu.
+    func testDetachCarriesTheRemainingCount() throws {
+        let mark = try reject(
+            #"""
+            {"state":"ihlal_degil","notViolation":true,"detached":true,
+             "remainingMedia":2,"mediaCount":3,"message":"kayıttan çıkarıldı"}
+            """#
+        ).mark
+        XCTAssertEqual(mark.phase, .notViolation)
+        XCTAssertEqual(mark.mediaCount, 2)
+    }
+
+    /// Geri çekme penceresi, kayıtta itirazsız delil kalıyorsa AYIRMA metnini
+    /// kuruyor. Tek metin, gerçekleşmeyecek bir şeyi ("ihbar geri çekilir")
+    /// vaat ederdi.
+    func testRetractCopyBranchesOnRemainingEvidence() {
+        let multi = IhbarMark(phase: .approved, mediaCount: 3, eliminatedCount: 0)
+        XCTAssertTrue(IhbarRetractCopy.detachOnly(multi))
+
+        let single = IhbarMark(phase: .approved, mediaCount: 1, eliminatedCount: 0)
+        XCTAssertFalse(IhbarRetractCopy.detachOnly(single))
+
+        // Sunucu sayı göndermediyse (eski sunucu) AĞIR metin kalıyor: hafif
+        // olanı vaat edip ağırını yapmaktan iyi.
+        let unknown = IhbarMark(phase: .approved)
+        XCTAssertFalse(IhbarRetractCopy.detachOnly(unknown))
+    }
+
+    /// KARAR VERİLMEMİŞ VİDEODA ÇİP YOK.
+    ///
+    /// Sahip videoyu yeni açtı; karar vermediği zaten kesin ve o etiket hiçbir
+    /// şey öğretmiyordu — yalnızca tam da videoya bakılması gereken anda yer
+    /// kaplıyordu. Görünen her çip bir HABER taşımak zorunda.
+    func testChipOnlyShowsWhenItHasSomethingToSay() {
+        XCTAssertFalse(IhbarMark(phase: .unknown).saysSomething)
+        XCTAssertFalse(IhbarMark(phase: .markable).saysSomething)
+
+        let newsworthy: [IhbarPhase] = [
+            .approved, .verified, .verifiedPending, .notViolation, .needsInfo,
+            .blocked, .pending, .error, .rejectError, .noToken, .busy, .rejecting,
+        ]
+        for phase in newsworthy {
+            XCTAssertTrue(IhbarMark(phase: phase).saysSomething, "\(phase) görünmeli")
+        }
+    }
 }

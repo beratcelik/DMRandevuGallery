@@ -110,4 +110,106 @@ class IhbarNotViolationTest {
         assertEquals(IhbarPhase.MARKABLE, mark.phase)
         assertNull(mark.matchedBy)
     }
+
+    /**
+     * ÇIKARIM HENÜZ BİTMEMİŞKEN VERİLEN OLUMLU KARAR.
+     *
+     * NEDEN TEST EDİLİYOR: bu hâl istisna değil, sağa atışın NORMAL yolu —
+     * çıkarım iki saatlik sessizlik penceresinde bekliyor, sahip ise videoyu
+     * izler izlemez karar veriyor. Tek evreye ("kayıt hazır değil")
+     * sıkıştırıldığında kart soluk görünüyor ve sahip aynı videoyu tekrar
+     * tekrar atıyordu; oysa dokunuş kaydedilmiş ve kayıt açılır açılmaz onaya
+     * gidecek.
+     */
+    @Test
+    fun `teyit alınmış ama kaydı açılmamış video ayrı evrede`() {
+        val mark = IhbarStatusItem(
+            state = "beklemede",
+            stateLabel = "Çıkarım sürüyor",
+            humanVerified = true
+        ).toMark()
+        assertEquals(IhbarPhase.VERIFIED_PENDING, mark.phase)
+
+        // Dokunulmamış video aynı durumda SOLUK kalıyor: teyit taşımıyor.
+        val elDegmemis = IhbarStatusItem(state = "beklemede", stateLabel = "Çıkarım sürüyor").toMark()
+        assertEquals(IhbarPhase.PENDING, elDegmemis.phase)
+    }
+
+    /**
+     * Kaydın kaç video taşıdığı istemciye ULAŞIYOR.
+     *
+     * Onay kaydın TAMAMINI memura gönderiyor; sağa atış tek videoya karar
+     * vermek gibi görünürken üç videoyu birden ihbar edebiliyor. Sayı
+     * taşınmazsa ekranın bunu söylemesinin hiçbir yolu yok.
+     */
+    @Test
+    fun `video sayıları işarete taşınıyor`() {
+        val mark = IhbarStatusItem(
+            state = "inceleniyor",
+            mediaCount = 3,
+            eliminatedCount = 1
+        ).toMark()
+        assertEquals(3, mark.mediaCount)
+        assertEquals(1, mark.eliminatedCount)
+    }
+
+    /**
+     * Ayırma: kayıt ayakta kaldığında işaret KALAN video sayısını taşıyor.
+     * Geri çekme penceresinin metni buna bakıyor; yanlış sayı, gerçekleşmeyecek
+     * bir şeyi vaat etmek olurdu.
+     */
+    @Test
+    fun `ayrılan videoda kalan sayı taşınıyor`() {
+        val mark = IhbarRejectResponse(
+            state = "ihlal_degil",
+            notViolation = true,
+            detached = true,
+            remainingMedia = 2,
+            mediaCount = 3,
+            message = "kayıttan çıkarıldı"
+        ).toMark()
+        assertEquals(IhbarPhase.NOT_VIOLATION, mark.phase)
+        assertEquals(2, mark.mediaCount)
+    }
+
+    /**
+     * Toplu elemede ATLANAN öğe, işaretin rengini DEĞİŞTİRMİYOR.
+     *
+     * Onaylı bir kaydı toplu hareket atlıyor; kartı "elendi"ye boyamak, sahibe
+     * elediğini sandırıp bir daha bakmamasına yol açardı — oysa ihbar memurda
+     * duruyor.
+     */
+    @Test
+    fun `toplu elemede atlanan onaylı kayıt onaylı kalıyor`() {
+        val mark = IhbarBulkRejectItem(
+            applied = false,
+            skipped = "onayli",
+            state = "onaylandi",
+            message = "toplu elemede atlandı"
+        ).toMark()
+        assertEquals(IhbarPhase.APPROVED, mark.phase)
+    }
+
+    /**
+     * KARAR VERİLMEMİŞ VİDEODA ÇİP YOK.
+     *
+     * Sahip videoyu yeni açtı; karar vermediği zaten kesin ve o etiket hiçbir
+     * şey öğretmiyordu — yalnızca tam da videoya bakılması gereken anda yer
+     * kaplıyordu. Görünen her çip bir HABER taşımak zorunda.
+     */
+    @Test
+    fun `çip yalnızca söyleyecek bir şey varken görünüyor`() {
+        assertEquals(false, IhbarMark(IhbarPhase.UNKNOWN).saysSomething)
+        assertEquals(false, IhbarMark(IhbarPhase.MARKABLE).saysSomething)
+
+        // Haber taşıyan her evre görünmeye devam ediyor.
+        listOf(
+            IhbarPhase.APPROVED, IhbarPhase.VERIFIED, IhbarPhase.VERIFIED_PENDING,
+            IhbarPhase.NOT_VIOLATION, IhbarPhase.NEEDS_INFO, IhbarPhase.BLOCKED,
+            IhbarPhase.PENDING, IhbarPhase.ERROR, IhbarPhase.REJECT_ERROR,
+            IhbarPhase.NO_TOKEN, IhbarPhase.BUSY, IhbarPhase.REJECTING,
+        ).forEach { phase ->
+            assertEquals("$phase görünmeli", true, IhbarMark(phase).saysSomething)
+        }
+    }
 }

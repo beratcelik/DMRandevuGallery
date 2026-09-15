@@ -3,10 +3,18 @@
 Android client for the DMRandevu media gallery: a full-screen feed of the videos customers
 sent in over Instagram DM, for triaging them into Stories and Reels.
 
-Vertical swipe moves between customers, horizontal swipe between that customer's videos.
-There is no delete button — **swiping forward to the next customer deletes the one you left**,
-after a five-second grace period in which swiping back cancels it. Deleting only clears the
-conversation from the server's Redis; the Instagram DM and its media are untouched.
+One flat vertical feed: every page is a video. Swiping up moves to the next video and, past a
+customer's last one, to the next customer. There is no delete button — **moving forward past a
+customer deletes the one you left**, after a five-second grace period in which swiping back
+cancels it. Deleting only clears the conversation from the server's Redis; the Instagram DM and
+its media are untouched.
+
+The horizontal axis is the decision (on the `trafik_cezasi` account only): **swipe right to
+report the video as a traffic violation, swipe left to dismiss it**. The request is held for
+three seconds behind an undo chip, and swiping back onto the page cancels it too. Dismissing a
+video that belongs to a multi-video report removes only that video; the report stays up with the
+rest of its evidence. Approved reports are the one case that asks first, because dismissing one
+retracts it from the officers it already reached.
 
 Per video: save to the phone gallery, hand straight to Instagram Stories, prepare for Reels,
 or generate an AI caption.
@@ -45,16 +53,58 @@ adb reverse tcp:3111 tcp:3111
 
 ## Notes
 
-Reels cannot be opened directly. Instagram honours `ADD_TO_REEL` only for apps Meta approved
-for "Sharing to Reels" and silently redirects everyone else, so the Reels button saves the
-video to the phone gallery and copies the caption instead — the Reel is created by picking it
-there. Stories has no such restriction and does open with the video loaded. No Instagram share
-intent accepts a caption on any surface, which is why captions travel via the clipboard.
+Reels opens its composer directly, and getting there was **not** a Meta approval. "Sharing to
+Reels" stopped being a closed programme in October 2023: it is self-serve, has no App Review
+submission, requests no permissions and needs neither Business Verification nor a Play Store
+listing. What it does need is a Meta App ID belonging to this app, riding on the intent as
+`com.instagram.platform.extra.APPLICATION_ID`, with that Meta app switched to **Live** mode.
+
+The app's ID is `1059486250258693`, in `InstagramSharing.META_APP_ID` (Android) and
+`InstagramSharing.metaAppID` (iOS). Before it, the code carried `685976850839286` — a public
+sample from Meta's own documentation, registered to nobody here — which is why Instagram used to
+answer a hand-off with a message of its own about the app not being supported or verified. That
+ID rides on **both** the Stories and the Reels hand-off.
+
+Two things gate it, and neither is visible from inside this app:
+
+- **The Meta app must be Live**, not in Development mode. In Development only accounts holding a
+  role on the app clear the gate, so testing with your own Instagram account proves nothing. Test
+  with a phone signed into an account with **no role** on the app.
+- **Leave Google Play Package Name empty** in the Meta dashboard unless the build is actually
+  public on Play. Meta's compliance crawler fails an unreachable one and can degrade the app.
+
+`REELS_COMPOSER_ENABLED` / `reelsComposerEnabled` switches the composer path on and is currently
+`true`. Turning it off returns to the older route: export, save to the phone gallery, copy the
+caption, open Instagram, pick the video by hand.
+
+That fallback is also the recovery path if Instagram refuses the ID, because **it cannot be
+detected from here**. `openReelComposer` returns false only when Instagram does not answer the
+intent at all; a rejection happens inside the composer, after the hand-off has already
+succeeded, and the composer route never writes to the phone gallery — so the operator is left
+with an error dialog and nothing to pick.
+
+Stories has no ID-free path at all, which is why it was the button that showed Instagram's
+complaint first. No Instagram share intent accepts a caption on any surface, which is why
+captions travel via the clipboard.
+
+The video must also be within Instagram's envelope: 1080p, 3 to 60 seconds, H.264/H.265 in
+MP4/MOV/WebM, and on iOS no larger than 50 MB.
+
+## Orientation
+
+The first launch of an install shows a full-screen tour of the gestures and the buttons,
+dismissed with "Anladım". The flag is the **build** it was last shown for
+(`tour_shown_build`, the same key string on both platforms), not a plain boolean: raising
+`versionCode` / `CURRENT_PROJECT_VERSION` when the gestures change shows it once more. Both are
+still at 1, so reinstalling over an existing install does not bring it back.
+
+The tour drops the swipe-left / swipe-right rows on accounts where the decision axis is inert,
+because teaching a gesture that does nothing is worse than teaching nothing.
 
 ## Küfür filtresi (profanity beep)
 
 A fourth export filter: Turkish swearing is replaced with a beep, while the background sound keeps
-playing underneath. Off by default; the toggle is the speaker icon in the page header.
+playing underneath. Off by default; the toggle is the speaker icon on the filter rail down the right edge.
 
 How it works, and why it is built this way:
 

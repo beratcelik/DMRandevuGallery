@@ -35,10 +35,14 @@ final class GalleryUITests: XCTestCase {
         try await MainActor.run { try waitForGallery() }
     }
 
-    // MARK: - The header
+    // MARK: - The header and the filter rail
 
     /// The bug that squeezed the face filter off the row: a long customer handle took the whole
     /// header and pushed the toggles out.
+    ///
+    /// YENİDEN YAZILDI: filtreler başlıktan çıkıp sağ kenardaki dikey raya indi, yani "isim
+    /// düğmeleri satırdan itiyor" arızası artık o eksende YOK. Ama asıl soru duruyor ve bu test
+    /// onu tutuyor: her filtre ekranda ve dokunulabilir mi, yoksa bir şeyin altında mı kaldı.
     @MainActor
     func testHeaderShowsTheNameAndEveryToggle() throws {
         XCTAssertTrue(customer.exists, "no customer name")
@@ -47,11 +51,12 @@ final class GalleryUITests: XCTestCase {
 
         for identifier in ["toggleFaces", "togglePlates", "toggleWatermark"] {
             let toggle = onScreen(identifier)
-            XCTAssertTrue(toggle.exists, "\(identifier) is missing from the header")
+            XCTAssertTrue(toggle.exists, "\(identifier) is missing from the rail")
             XCTAssertTrue(toggle.frame.width > 0, "\(identifier) has been squeezed to nothing")
+            XCTAssertTrue(toggle.isHittable, "\(identifier) cannot be tapped where it now sits")
         }
 
-        // Nothing in the header may sit in the notch.
+        // Ne isim ne de ray güvenli alanın dışında kalabilir.
         for identifier in ["customerName", "toggleFaces", "togglePlates", "toggleWatermark"] {
             XCTAssertGreaterThan(
                 onScreen(identifier).frame.minY, 20,
@@ -59,12 +64,32 @@ final class GalleryUITests: XCTestCase {
             )
         }
 
-        // The name must not run underneath the toggles.
-        let leftmostToggle = onScreen("toggleFaces").frame.minX
-        XCTAssertLessThanOrEqual(
-            customer.frame.maxX, leftmostToggle + 1,
-            "the name overlaps the toggles instead of truncating"
+        // RAY SAĞ KENARDA: Instagram'ın beğen/yorum sütunuyla aynı yerde olması istenen şey
+        // buydu. Sola kayarsa hem istek karşılanmamış olur hem de karar damgasının üstüne biner.
+        let screen = XCUIApplication().windows.firstMatch.frame
+        for identifier in ["toggleFaces", "togglePlates", "toggleWatermark"] {
+            let toggle = onScreen(identifier)
+            XCTAssertGreaterThan(
+                toggle.frame.midX, screen.midX,
+                "\(identifier) is not on the right edge any more"
+            )
+        }
+
+        // RAY ALT ÜÇTE BİRDE: kararın adını yazan damga sağ ÜSTTE 120pt'de duruyor ve parmak
+        // kalkmadan okunabilmesi gerekiyor. Ray yukarı taşarsa damganın üstüne biner.
+        XCTAssertGreaterThan(
+            onScreen("toggleFaces").frame.minY, screen.height / 2,
+            "the rail has climbed into the swipe stamp's half of the screen"
         )
+
+        // İsim, sıradaki müşteri sayısının altına girmemeli: filtreler indikten sonra başlıkta
+        // ona yol veren tek şey o sayı kaldı.
+        if onScreen("remainingCount").exists {
+            XCTAssertLessThanOrEqual(
+                customer.frame.maxX, onScreen("remainingCount").frame.minX + 1,
+                "the name overlaps the remaining count instead of truncating"
+            )
+        }
     }
 
     // MARK: - The reported bugs
@@ -83,6 +108,9 @@ final class GalleryUITests: XCTestCase {
     }
 
     /// The face toggle was laid out underneath the notch, where it was invisible and unreachable.
+    ///
+    /// Ray aşağı indikten sonra tehlike yön değiştirdi: artık çentiğin değil, alt eylem
+    /// sırasının altında kalmak. İkisi de aynı arıza, o yüzden iki sınır birden tutuluyor.
     @MainActor
     func testFaceToggleIsReachableAndWorks() throws {
         let toggle = onScreen("toggleFaces")
@@ -90,6 +118,11 @@ final class GalleryUITests: XCTestCase {
         XCTAssertGreaterThan(
             toggle.frame.minY, 20,
             "the face filter is up in the notch, where it cannot be seen"
+        )
+        XCTAssertLessThan(
+            toggle.frame.maxY,
+            XCUIApplication().windows.firstMatch.frame.maxY - 80,
+            "the face filter has slid down under the action row"
         )
         toggle.tap()
         // Both possibilities in one loop: the toast only lives three seconds, and waiting out a
@@ -113,24 +146,36 @@ final class GalleryUITests: XCTestCase {
         onScreen("togglePlates").tap() // put it back
     }
 
-    /// Swiping up must move to the next customer.
+    /// Yukarı kaydırmak BİR SONRAKİ VİDEOYA geçiyor; müşterinin son videosundan
+    /// sonra da bir sonraki müşteriye.
+    ///
+    /// BU TEST BİLEREK YENİDEN YAZILDI. Eski hâli "yukarı kaydırmak müşteriyi
+    /// değiştirir" diyordu ve o cümle akış düzleşene kadar doğruydu: videolar
+    /// yatay eksende geziliyordu. Yatay eksen artık KARAR (sağa at = ihbar,
+    /// sola at = ihlal değil), videolar dikey eksene taşındı. Testi silmek,
+    /// eksenlerin anlamını tutan tek yazılı kaydı silmek olurdu.
     @MainActor
-    func testSwipeUpMovesToTheNextCustomer() throws {
-        let first = customerNameText
+    func testSwipeUpMovesToTheNextVideoOrCustomer() throws {
+        let firstName = customerNameText
+        let firstPosition = videoPosition.exists ? videoPosition.label : ""
+
         video.swipeUp(velocity: .fast)
+        Thread.sleep(forTimeInterval: 1.5)
+
+        let movedWithinCustomer = videoPosition.exists
+            && videoPosition.label != firstPosition
+            && customerNameText == firstName
+        let movedToNextCustomer = customerNameText != firstName
         XCTAssertTrue(
-            waitForNameToChange(from: first),
-            "swiping up did not move on from \(first)"
+            movedWithinCustomer || movedToNextCustomer,
+            "yukarı kaydırmak ne bir sonraki videoya ne de bir sonraki müşteriye geçti"
         )
 
-        // Straight back, which is also the undo for the deletion the forward swipe queued.
-        let second = customerNameText
+        // Geri dönmek: müşteri sınırındaysa kuyruğa girmiş silmenin de geri
+        // alınması demek.
         video.swipeDown(velocity: .fast)
-        XCTAssertTrue(
-            waitForNameToChange(from: second),
-            "swiping back down did not return to the previous customer"
-        )
-        XCTAssertEqual(customerNameText, first, "swiping back landed somewhere else")
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertEqual(customerNameText, firstName, "geri kaydırmak başka bir yere düştü")
     }
 
     // MARK: - Playback
@@ -196,16 +241,40 @@ final class GalleryUITests: XCTestCase {
         XCTAssertFalse(pausedIndicator.exists, "a hold was read as a tap and paused the video")
     }
 
-    /// Horizontal swipes move between one customer's videos and must never change customer.
+    /// Sola atmak KARAR veriyor ve geri alma çipi çıkıyor.
+    ///
+    /// BU TEST DE BİLEREK YENİDEN YAZILDI: eski hâli "yatay kaydırma müşteriyi
+    /// değiştirmez" diyordu, yani yatay ekseni bir GEZİNME ekseni sayıyordu.
+    /// Artık karar ekseni.
+    ///
+    /// İHBAR HESABI DEĞİLSE TERSİ SINANIYOR: orada yatay eksen tamamen atıl
+    /// olmalı — ihbar hattının tanımadığı bir hesapta kaydırma, karşılığı
+    /// olmayan bir kaydı karara bağlamaya çalışmak olurdu.
     @MainActor
-    func testHorizontalSwipeStaysOnTheSameCustomer() throws {
-        guard dots.exists else {
-            throw XCTSkip("This customer has a single video; nothing to swipe between")
+    func testSwipeLeftDecidesAndUndoReturns() throws {
+        guard ihbarChip.exists else {
+            // İhbar hesabı değil: yatay eksen hiçbir şey yapmamalı.
+            let before = customerNameText
+            let position = videoPosition.exists ? videoPosition.label : ""
+            video.swipeLeft(velocity: .fast)
+            Thread.sleep(forTimeInterval: 1.5)
+            XCTAssertEqual(customerNameText, before, "ihbar dışı hesapta kaydırma müşteriyi değiştirdi")
+            if videoPosition.exists {
+                XCTAssertEqual(videoPosition.label, position, "ihbar dışı hesapta kaydırma videoyu değiştirdi")
+            }
+            return
         }
-        let before = customerNameText
+
         video.swipeLeft(velocity: .fast)
-        Thread.sleep(forTimeInterval: 1.5)
-        XCTAssertEqual(customerNameText, before, "a sideways swipe changed customer")
+        // Geri alma çipi kararın TEK görünür izi: kart karar verilir verilmez
+        // uçuyor ve akış ilerliyor.
+        XCTAssertTrue(
+            undoChip.waitForExistence(timeout: 3),
+            "sola atış geri alma çipini göstermedi"
+        )
+        undoChip.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertFalse(undoChip.exists, "geri alma sonrası çip ekranda kaldı")
     }
 
     // MARK: - Export
@@ -299,6 +368,19 @@ final class GalleryUITests: XCTestCase {
         guard customer.waitForExistence(timeout: 45) else {
             throw XCTSkip("The gallery never loaded — no session, or the account has no videos")
         }
+        dismissTourIfShown()
+    }
+
+    /// Kurulum başına bir kez çıkan akış tanıtımını kapatır.
+    ///
+    /// KAPATILMAZSA HİÇBİR TEST KOŞMAZ: tanıtım tam ekran ve altına hiçbir dokunuş geçirmiyor,
+    /// yani taze kurulmuş bir uygulamada her testin ilk dokunuşu ona giderdi. Bir başlatma
+    /// argümanıyla bastırmak yerine gerçekten kapatılıyor — operatörün yaptığı da bu, ve
+    /// bastırılan bir yüzey testlerde bir daha hiç görünmezdi.
+    @MainActor
+    private func dismissTourIfShown() {
+        let done = app.buttons["Anladım"]
+        if done.waitForExistence(timeout: 2) { done.tap() }
     }
 
     // MARK: - Handles
@@ -326,7 +408,9 @@ final class GalleryUITests: XCTestCase {
     @MainActor private var pausedIndicator: XCUIElement { onScreen("pausedIndicator") }
     @MainActor private var scrubber: XCUIElement { onScreen("scrubber") }
     @MainActor private var speedBadge: XCUIElement { onScreen("speedBadge") }
-    @MainActor private var dots: XCUIElement { onScreen("mediaDots") }
+    @MainActor private var videoPosition: XCUIElement { onScreen("videoPosition") }
+    @MainActor private var ihbarChip: XCUIElement { onScreen("ihbarStatusChip") }
+    @MainActor private var undoChip: XCUIElement { onScreen("undoChip") }
 
     /// The middle of the screen: video, and nothing else on top of it.
     @MainActor private var video: XCUIElement {

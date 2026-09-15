@@ -110,9 +110,23 @@ struct IhbarStatusItem: Decodable {
     let violationCode: String?
     /// Eksik alanların onayı gerçekten ENGELLEYEN alt kümesi (il / tarih / medya).
     let blockingFields: [String]
+    /// Bu ihbara bağlı TOPLAM video sayısı.
+    ///
+    /// NEDEN GEREKLİ: onay KAYDIN TAMAMINI memura gönderiyor. Sağa atış tek bir
+    /// videoya karar vermek gibi görünürken üç videoyu birden ihbar edebiliyor
+    /// ve kart bunu söylemeden önce bilmek zorunda. Aynı sayı, elemede
+    /// gösterilecek geri çekme penceresinin hangi cümleyi kuracağını da
+    /// belirliyor.
+    ///
+    /// 0 = "sunucu söylemedi" (eski sunucu); kart o hâlde sayıdan hiç söz
+    /// etmiyor, uydurmuyor.
+    let mediaCount: Int
+    /// Bu ihbara bağlı olup sahibin ZATEN elediği video sayısı.
+    let eliminatedCount: Int
 
     private enum CodingKeys: String, CodingKey {
-        case state, stateLabel, humanVerified, notViolation, matchedBy, violationCode, blockingFields
+        case state, stateLabel, humanVerified, notViolation, matchedBy, violationCode
+        case blockingFields, mediaCount, eliminatedCount
     }
 
     init(from decoder: Decoder) throws {
@@ -124,6 +138,8 @@ struct IhbarStatusItem: Decodable {
         matchedBy = try container.decodeIfPresent(String.self, forKey: .matchedBy)
         violationCode = try container.decodeIfPresent(String.self, forKey: .violationCode)
         blockingFields = try container.decodeIfPresent([String].self, forKey: .blockingFields) ?? []
+        mediaCount = try container.decodeIfPresent(Int.self, forKey: .mediaCount) ?? 0
+        eliminatedCount = try container.decodeIfPresent(Int.self, forKey: .eliminatedCount) ?? 0
     }
 }
 
@@ -141,9 +157,14 @@ struct IhbarApproveResponse: Decodable {
     /// Kaç memura gittiği de, hangi alanın eksik olduğu da bunun içinde — o yüzden
     /// o alanlar ayrıca taşınmıyor.
     let message: String
+    /// Onaylanan ihbarın kaç video taşıdığı — memura giden delil sayısı.
+    let mediaCount: Int
+    /// Onaydan önce kayıttan çıkarılan, daha önce elenmiş kardeş video sayısı.
+    let detachedSiblings: Int
 
     private enum CodingKeys: String, CodingKey {
         case state, stateLabel, matchedBy, humanVerified, blockingFields, problems, message
+        case mediaCount, detachedSiblings
     }
 
     init(from decoder: Decoder) throws {
@@ -155,6 +176,8 @@ struct IhbarApproveResponse: Decodable {
         blockingFields = try container.decodeIfPresent([String].self, forKey: .blockingFields) ?? []
         problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
         message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+        mediaCount = try container.decodeIfPresent(Int.self, forKey: .mediaCount) ?? 0
+        detachedSiblings = try container.decodeIfPresent(Int.self, forKey: .detachedSiblings) ?? 0
     }
 }
 
@@ -184,9 +207,20 @@ struct IhbarRejectResponse: Decodable {
     /// gittiğini de bu cümle söylüyor; kendi metnimizi üretmek, sunucunun
     /// bildiğini tahmin etmek olurdu.
     let message: String
+    /// Karar YALNIZCA bu videoya uygulandı mı — kayıt kalan delille ayakta mı?
+    ///
+    /// NEDEN AYRI BİR ALAN (mesaja bakılmıyor): ekran, kullanıcıya söyleyeceği
+    /// cümleyi buna göre seçiyor. Serbest metinden çıkarım yapmak, sunucu
+    /// cümlesini düzelten ilk günün sessizce yanlış şey söylemesi demekti.
+    let detached: Bool
+    /// Ayırmadan sonra kayıtta kalan video sayısı.
+    let remainingMedia: Int
+    /// Karar anında kayda bağlı toplam video.
+    let mediaCount: Int
 
     private enum CodingKeys: String, CodingKey {
         case state, stateLabel, matchedBy, notViolation, message
+        case detached, remainingMedia, mediaCount
     }
 
     init(from decoder: Decoder) throws {
@@ -196,6 +230,104 @@ struct IhbarRejectResponse: Decodable {
         matchedBy = try container.decodeIfPresent(String.self, forKey: .matchedBy)
         notViolation = try container.decodeIfPresent(Bool.self, forKey: .notViolation) ?? false
         message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+        detached = try container.decodeIfPresent(Bool.self, forKey: .detached) ?? false
+        remainingMedia = try container.decodeIfPresent(Int.self, forKey: .remainingMedia) ?? 0
+        mediaCount = try container.decodeIfPresent(Int.self, forKey: .mediaCount) ?? 0
+    }
+}
+
+// MARK: - Toplu eleme
+
+/// Bir konuşmanın karar verilmemiş videolarını TEK istekte eleme isteği.
+///
+/// NEDEN TOPLU BİR UÇ VAR (tekil uç dururken): bir muhabir on beş video
+/// gönderebiliyor ve hiçbiri ihlal olmayabilir. Tek tek elemek on beş istek
+/// demek; iki yazma ucu TEK bir oran sınırı kovasını paylaşıyor (dakikada
+/// yirmi) ve yirmi birinci dokunuş reddediliyor — konuşma yarım elenmiş kalıyor
+/// ve ekranda bitmiş görünüyor. Toplu uç tek çağrı = tek hak sayılıyor.
+///
+/// TOPLU ONAY YOK VE OLMAYACAK: eleme geri alınabilir bir karar (aynı videoyu
+/// sağa atmak fikri değiştiriyor); onay ise delili bir kamu birimine çıkarıyor.
+struct IhbarBulkRejectRequest: Encodable {
+    let items: [IhbarItem]
+}
+
+/// Toplu elemede TEK bir videonun sonucu; öğeler İSTEK SIRASIYLA dönüyor.
+struct IhbarBulkRejectItem: Decodable {
+
+    let key: String
+    /// Sahibin kararı deftere YAZILDI mı?
+    let applied: Bool
+    /// Kaydın kendisine dokunulmadıysa sebebi: 'onayli' | 'zayif_anahtar' |
+    /// 'bulunamadi' | 'zaten'. Tanınmayan bir değer atlanmış sayılmaya devam
+    /// ediyor — sunucu yeni bir sebep eklediğinde uygulama çökmemeli.
+    let skipped: String?
+    let state: String
+    let stateLabel: String
+    let notViolation: Bool
+    let detached: Bool
+    let remainingMedia: Int
+    let violationCode: String?
+    let message: String
+
+    private enum CodingKeys: String, CodingKey {
+        case key, applied, skipped, state, stateLabel, notViolation
+        case detached, remainingMedia, violationCode, message
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decodeIfPresent(String.self, forKey: .key) ?? ""
+        applied = try container.decodeIfPresent(Bool.self, forKey: .applied) ?? false
+        skipped = try container.decodeIfPresent(String.self, forKey: .skipped)
+        state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+        stateLabel = try container.decodeIfPresent(String.self, forKey: .stateLabel) ?? ""
+        notViolation = try container.decodeIfPresent(Bool.self, forKey: .notViolation) ?? false
+        detached = try container.decodeIfPresent(Bool.self, forKey: .detached) ?? false
+        remainingMedia = try container.decodeIfPresent(Int.self, forKey: .remainingMedia) ?? 0
+        violationCode = try container.decodeIfPresent(String.self, forKey: .violationCode)
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+    }
+}
+
+struct IhbarBulkRejectResponse: Decodable {
+
+    let items: [IhbarBulkRejectItem]
+    /// Kararı deftere yazılan video sayısı.
+    let applied: Int
+    /// Dokunulmayan video sayısı (onaylı, tanınmayan, zayıf anahtarlı).
+    let skipped: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case items, applied, skipped
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decodeIfPresent([IhbarBulkRejectItem].self, forKey: .items) ?? []
+        applied = try container.decodeIfPresent(Int.self, forKey: .applied) ?? 0
+        skipped = try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0
+    }
+}
+
+extension IhbarBulkRejectItem {
+
+    var mark: IhbarMark {
+        let phase: IhbarPhase
+        switch skipped {
+        // ATLANAN ÖĞE İŞARETİ DEĞİŞTİRMEMELİ: onaylı kayıt onaylı kalıyor,
+        // tanınmayan video bilinmiyor kalıyor. Toplu bir hareketin, dokunmadığı
+        // bir videonun rengini değiştirmesi en sessiz yalan olurdu.
+        case "onayli": phase = .approved
+        case "bulunamadi", "zayif_anahtar": phase = .pending
+        default:
+            phase = (notViolation || state == "ihlal_degil") ? .notViolation : .pending
+        }
+        return IhbarMark(
+            phase: phase,
+            detail: message.isEmpty ? (stateLabel.isEmpty ? nil : stateLabel) : message,
+            mediaCount: detached ? remainingMedia : 0
+        )
     }
 }
 
@@ -263,6 +395,18 @@ enum IhbarPhase {
     case markable
     /// İnsan teyidi kaydedildi. YEŞİL.
     case verified
+    /// Teyit alındı ama ihbar kaydı HENÜZ AÇILMADI. YEŞİL.
+    ///
+    /// NEDEN ``pending``'DEN AYRI: ikisi de "kayıt yok" hâlini anlatıyor ama
+    /// biri sahibin dokunuşunu taşıyor, diğeri taşımıyor. Tek evreye
+    /// sıkıştırıldığında sağa atılan video soluk "kayıt hazır değil" görünüyor
+    /// ve sahip aynı videoyu tekrar tekrar atıyordu — oysa dokunuş kaydedilmiş
+    /// ve kayıt açılır açılmaz onaya gidecek (sunucuda galeri/finalize.ts).
+    ///
+    /// NEDEN ``verified`` DEĞİL: alt satırdaki cümle farklı olmak zorunda.
+    /// "İhlal olarak işaretlendi" demek, ihbarın çoktan yola çıktığını ima
+    /// ederdi; doğru cümle "kayıt açılınca ihbar edilecek".
+    case verifiedPending
     /// İhbar onaylandı ve memurlara gidiyor. YEŞİL.
     case approved
     /// Teyit alındı ama kritik alan eksik. AMBER.
@@ -303,6 +447,34 @@ struct IhbarMark: Equatable {
     /// Ekranda gösterilmiyor; ileride "yanlış videoya yeşil düğme" şüphesi
     /// doğduğunda bakılacak ilk alan bu ve o gün elde olması gerekiyor.
     var matchedBy: String? = nil
+    /// Bu ihbarın kaç video taşıdığı (0 = sunucu söylemedi).
+    ///
+    /// Ekranda iki yerde okunuyor: kartın "3 videoluk ihbar" satırı ve geri
+    /// çekme penceresinin metni. Sağa atmak tek videoya karar vermek gibi
+    /// görünürken kaydın tamamını gönderiyor; bunu söylemenin tek yolu bu sayı.
+    var mediaCount: Int = 0
+    /// Bu ihbarda sahibin ZATEN elediği video sayısı.
+    var eliminatedCount: Int = 0
+}
+
+extension IhbarMark {
+
+    /// Çipin söyleyecek bir şeyi var mı?
+    ///
+    /// ─── NEDEN "KARAR VERİLMEDİ" YAZMIYORUZ ────────────────────────────────
+    /// Sahip videoyu YENİ açtı; karar vermediği zaten kesin. Ekranda duran her
+    /// etiket okunmayı hak etmek zorunda ve bu etiket hiçbir şey öğretmiyordu —
+    /// yalnızca kararın verileceği yerde, tam da videoya bakılması gereken anda
+    /// yer kaplıyordu. Görünen her çip artık bir HABER taşıyor: ihbar edildi,
+    /// elendi, bilgi eksik, istek düştü, belirteç yok.
+    ///
+    /// NÖTR EVREDE ÇİP OLMAMASI BİLGİ KAYBI DEĞİL: kararın nasıl verileceğini
+    /// kaydırmanın kendisi öğretiyor (kart parmakla hareket ediyor ve damga
+    /// beliriyor), ve boş bir ekran "bu videoya henüz dokunulmadı" demenin en
+    /// kısa yolu.
+    var saysSomething: Bool {
+        phase != .unknown && phase != .markable
+    }
 }
 
 private func ihbarPhase(state: String, humanVerified: Bool, notViolation: Bool) -> IhbarPhase {
@@ -320,7 +492,11 @@ private func ihbarPhase(state: String, humanVerified: Bool, notViolation: Bool) 
     // bağlamsız kalıyor.
     return switch state {
     case IhbarState.onaylandi: .approved
-    case IhbarState.bilinmiyor, IhbarState.beklemede: .pending
+    // BEKLEMEDE + TEYİT = dokunuş kaydedildi, kayıt yolda. Bu ayrım olmadan
+    // sahibin sağa attığı video soluk "kayıt hazır değil" görünüyor ve aynı
+    // videoya tekrar tekrar basılıyordu.
+    case IhbarState.beklemede: humanVerified ? .verifiedPending : .pending
+    case IhbarState.bilinmiyor: .pending
     case IhbarState.onaylanamaz: .blocked
     // Aşağıdaki üçü teyitten ÖNCE de görülebiliyor: kayıt eksik bilgili ya da
     // kapanmış olabilir ama sahip henüz videoya bakmamıştır. Teyit yokken düğme
@@ -348,7 +524,9 @@ extension IhbarStatusItem {
             // kodu görmek, aynı ihbarı yönetici konsolunda aramayı mümkün kılıyor.
             detail: phase == .approved ? (violationCode ?? label) : label,
             blockingFields: blockingFields,
-            matchedBy: matchedBy
+            matchedBy: matchedBy,
+            mediaCount: mediaCount,
+            eliminatedCount: eliminatedCount
         )
     }
 }
@@ -371,7 +549,8 @@ extension IhbarApproveResponse {
             phase: phase,
             detail: phase == .blocked ? (problems.first ?? sentence) : sentence,
             blockingFields: blockingFields,
-            matchedBy: matchedBy
+            matchedBy: matchedBy,
+            mediaCount: mediaCount
         )
     }
 }
@@ -393,7 +572,11 @@ extension IhbarRejectResponse {
         return IhbarMark(
             phase: ihbarPhase(state: state, humanVerified: false, notViolation: notViolation),
             detail: sentence,
-            matchedBy: matchedBy
+            matchedBy: matchedBy,
+            // AYIRMADAN SONRAKİ SAYI: kayıt ayakta kaldıysa kaç video kaldığı,
+            // kapandıysa kaç video taşıdığı. Kartın "kayıt 2 videoyla devam
+            // ediyor" diyebilmesi için tek kaynak bu.
+            mediaCount: detached ? remainingMedia : mediaCount
         )
     }
 }

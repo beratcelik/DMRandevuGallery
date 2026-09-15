@@ -31,9 +31,15 @@ Two behaviours differ on purpose and are worth knowing:
 - **Audio is re-encoded.** Android transmuxes it. `AVAssetExportSession`'s presets give no
   passthrough option; at these presets the loss is inaudible and Instagram re-encodes on upload
   anyway.
-- **No page-index correction after a delete.** The vertical pager is positioned by conversation
-  key, so removing a conversation above the viewport leaves the visible one where it is. The
-  Android build had to step the pager back by hand.
+- **No page-index correction after a delete.** The vertical pager is positioned by page id
+  (`conversationKey#mediaIndex`), so removing a conversation above the viewport leaves the visible
+  page where it is. The Android build has to step its pager back by the deleted conversation's
+  page count by hand.
+- **The decision swipe is a paging ScrollView, not a DragGesture.** A `DragGesture` on this
+  surface was tried once and reverted: it claimed every vertical swipe and the feed stopped
+  scrolling. The horizontal axis instead carries three panes — report, video, dismiss — using the
+  same construct that has paged inside the vertical feed all along, so SwiftUI arbitrates the two
+  axes itself. Android uses a horizontal pointer-input detector, which has no SwiftUI equivalent.
 
 ## The plate model
 
@@ -64,7 +70,7 @@ Three suites:
   `sample.mp4` in the host app's Documents directory, or set `DMRANDEVU_SAMPLE_VIDEO`. Use a clip
   with both a visible face and a visible plate. The face case runs on a device only, because
   Vision's face detector answers "could not create inference context" in the simulator.
-- **`DMRandevuGaleriUITests`** — drives the real app: the header layout, every filter toggle, tap
+- **`DMRandevuGaleriUITests`** — drives the real app: the header and the right-edge filter rail, every toggle, tap
   to pause, press to run fast, the scrubber, vertical paging and the caption sheet. Needs a signed-in
   app (or `DMRANDEVU_USER` / `DMRANDEVU_PASS` in the runner environment) and skips otherwise.
   Swiping forward past a customer queues their deletion, exactly as it does in use.

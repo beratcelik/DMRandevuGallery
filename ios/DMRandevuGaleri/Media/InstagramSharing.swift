@@ -10,14 +10,27 @@ import UIKit
 /// clipboard for the operator to paste.
 enum InstagramSharing {
 
-    /// Public Meta app identifier; Instagram requires it to attribute the incoming share.
-    private static let sourceApplication = "685976850839286"
+    /// Meta uygulama kimliğimiz. Instagram gelen paylaşımı BUNUNLA tanıyor.
+    ///
+    /// Bir süre burada Meta'nın örnek belgelerinden gelen herkese açık bir kimlik duruyordu ve
+    /// bu uygulama adına kayıtlı olmadığı için Instagram paylaşımı kendi penceresinde
+    /// reddediyordu. Ayrıntısı Android ikizinde: `InstagramSharing.META_APP_ID`.
+    static let metaAppID = "1059486250258693"
+
+    /// Reels bestecisini doğrudan açmayı dene. AÇIK; bilinen riski Android ikizindeki
+    /// `REELS_COMPOSER_ENABLED` başlığında yazıyor.
+    static let reelsComposerEnabled = true
 
     private static let storiesScheme = "instagram-stories://share?source_application="
+    private static let reelsScheme = "instagram-reels://share"
     private static let appScheme = "instagram://app"
 
     /// The pasteboard key Instagram reads a Story's background video from.
     private static let backgroundVideoKey = "com.instagram.sharedSticker.backgroundVideo"
+
+    /// Reels aynı anahtarı okuyor, kimliği ise ayrı bir anahtardan alıyor — Hikaye'deki gibi
+    /// adresin içinden değil.
+    private static let appIDKey = "com.instagram.sharedSticker.appID"
 
     @MainActor
     static var isInstalled: Bool {
@@ -32,7 +45,7 @@ enum InstagramSharing {
     /// sitting in the system pasteboard afterwards.
     @MainActor
     static func openStoryComposer(video: URL) -> Bool {
-        guard let url = URL(string: storiesScheme + sourceApplication),
+        guard let url = URL(string: storiesScheme + metaAppID),
               UIApplication.shared.canOpenURL(url),
               let data = try? Data(contentsOf: video) else { return false }
 
@@ -44,13 +57,30 @@ enum InstagramSharing {
         return true
     }
 
-    /// Opens Instagram so a Reel can be created from a video already sitting in the photo library,
-    /// with the caption waiting on the clipboard.
+    /// Reels bestecisini videoyla açar. Yalnızca `reelsComposerEnabled` açıkken çağrılmalı.
     ///
-    /// There is no way to hand a video straight to the Reels composer: the reels entry point is
-    /// only honoured for apps Meta approved for "Sharing to Reels", and an unapproved caller is
-    /// silently bounced elsewhere — the same wall the Android build ran into. So the video is
-    /// saved to the photo library first and picked there instead.
+    /// `false` dönmesi "Instagram bu adresi karşılamadı" demek; kimliği reddetmesi bundan ayrı
+    /// bir şey ve buradan görünmüyor — çağıran her hâlükârda fotoğraflara kaydeden yolu elinde
+    /// tutmalı.
+    @MainActor
+    static func openReelComposer(video: URL) -> Bool {
+        guard let url = URL(string: reelsScheme),
+              UIApplication.shared.canOpenURL(url),
+              let data = try? Data(contentsOf: video) else { return false }
+
+        UIPasteboard.general.setItems(
+            [[backgroundVideoKey: data, appIDKey: metaAppID]],
+            options: [.expirationDate: Date().addingTimeInterval(pasteboardLifetime)]
+        )
+        UIApplication.shared.open(url)
+        return true
+    }
+
+    /// Instagram'ı açar; video zaten fotoğraflarda, caption panoda bekliyor.
+    ///
+    /// Reels bestecisi bu yoldan AÇILMIYOR ve sebebi bir Meta onayı değil: giriş noktası kendi
+    /// Meta uygulama kimliğimizi istiyor, elimizdeki kimlik bizim değil. Bu yüzden video önce
+    /// fotoğraflara kaydediliyor ve Reels'te oradan seçiliyor.
     @MainActor
     static func openInstagram() -> Bool {
         guard let url = URL(string: appScheme), UIApplication.shared.canOpenURL(url) else {

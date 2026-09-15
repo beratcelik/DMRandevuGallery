@@ -137,35 +137,53 @@ final class GalleryViewModel {
         }
     }
 
+    /// Akışın DÜZ sayfa listesi: her sayfa bir video.
+    ///
+    /// NEDEN TÜRETİLMİŞ (ikinci bir liste tutulmuyor): iki liste er geç ayrışır
+    /// ve ayrıştıkları an sayfa sırası ile konuşma sırası birbirini tutmaz —
+    /// yani yanlış müşteri silinir. Tek gerçek kaynak ``items``.
+    var feed: [FeedPage] { buildFeed(items) }
+
+    /// Geri alma penceresinde bekleyen kaydırma kararları.
+    private(set) var pendingDecisions = DecisionLedger()
+
+    /// Bekleyen kararların zamanlayıcıları; anahtar ``FeedPage/id``.
+    private var decisionJobs: [String: Task<Void, Never>] = [:]
+
     // MARK: - Swipe-to-delete
 
-    /// Called whenever the vertical pager settles. Deleting is driven purely by which conversation
-    /// the operator *left*, compared by stable key — indices shift when items are removed, so
-    /// comparing them would delete the wrong customer.
-    func onPageSettled(key newKey: String) {
-        let previousKey = lastSettledKey
-        lastSettledKey = newKey
+    /// Dikey akış bir SAYFADA yerleştiğinde çalışıyor.
+    ///
+    /// Akış düzleşti: bir sayfa artık bir VİDEO. "Sayfa değişti" bu yüzden
+    /// "müşteri değişti" demek değil ve kural bunu ayırt edemezse, sahip aynı
+    /// müşterinin ikinci videosuna geçtiği anda o müşteri beş saniye sonra
+    /// sessizce siliniyor. Ayrımı saf kural veriyor (ui/FeedPages.swift).
+    func onPageSettled(pageID: String) {
+        guard let current = feed.first(where: { $0.id == pageID }) else { return }
 
-        if newKey == previousKey {
-            maybeLoadMore(around: newKey)
-            return
-        }
+        let action = onSettled(
+            previousConversationKey: lastSettledKey,
+            next: current,
+            conversationKeys: items.map(\.key),
+            pendingDeleteKey: pending?.conversation.key
+        )
+        lastSettledKey = current.conversationKey
 
-        // Swiping back onto the conversation queued for deletion is an implicit undo.
-        if pending?.conversation.key == newKey {
+        switch action {
+        case .none:
+            break
+        case .cancelPendingDelete:
             cancelPending()
-            maybeLoadMore(around: newKey)
-            return
+        case .queueDelete(let index):
+            if items.indices.contains(index) { queueDelete(items[index]) }
         }
 
-        if let previousKey,
-           let previousIndex = items.firstIndex(where: { $0.key == previousKey }),
-           let newIndex = items.firstIndex(where: { $0.key == newKey }),
-           // Forward swipe only — going back must never delete.
-           newIndex > previousIndex {
-            queueDelete(items[previousIndex])
-        }
-        maybeLoadMore(around: newKey)
+        // BU SAYFAYA GERİ DÖNMEK, KARARI DA GERİ ALIYOR. İkinci geri alma yolu
+        // (çipe dokunmak) ekranın altında duruyor; bu ise sahibin zaten yaptığı
+        // hareketin karşılığı: "bir bakayım" diye geri kaydırmak.
+        if pendingDecisions[current.id] != nil { undoDecision(current.id) }
+
+        maybeLoadMore(around: current.conversationKey)
     }
 
     private func maybeLoadMore(around key: String) {
@@ -225,6 +243,169 @@ final class GalleryViewModel {
         }
         if pending?.conversation.key == conversation.key { pending = nil }
         if items.count <= Self.prefetchDistance { await loadMore() }
+    }
+
+    // MARK: - Kaydırma kararları (geri alma penceresi)
+
+    /// Sağa/sola atışın kararı: üç saniye bekletilip sonra ağa çıkıyor.
+    ///
+    /// ─── NEDEN BEKLETİLİYOR ────────────────────────────────────────────────
+    /// Sağa atış bir ihbarı emniyet birimine gönderiyor ve bu tam olarak geri
+    /// alınamıyor: geri çekme, memura "bu ihbarı dikkate almayın" bildirimi
+    /// gönderiyor. Kaydırma kararı hızlandırdığı kadar yanlış kararı da
+    /// hızlandırıyor; üç saniyelik pencere parmağın kaydığı hâlleri ağa hiç
+    /// çıkmadan yakalıyor.
+    ///
+    /// ─── NEDEN KONUŞMANIN ANLIK GÖRÜNTÜSÜ SAKLANIYOR ───────────────────────
+    /// Karar beklerken sahip bir sonraki müşteriye geçebiliyor ve o hareket
+    /// geride bıraktığı konuşmayı silme sırasına alıyor (beş saniye). Karar
+    /// uygulanırken anahtarla aransaydı hiçbir şey bulunamaz ve karar sessizce
+    /// kaybolurdu.
+    func decide(_ conversation: Conversation, mediaIndex: Int, decision: SwipeOutcome) {
+        // Kapı burada da duruyor: çizimi gizlemek bir görünüm kararı, bu istek
+        // ise emniyete giden bir kayıt — çağıranın dikkatine bırakılamaz.
+        guard ihbarAvailable else { return }
+
+        let page = FeedPage(conversationKey: conversation.key, mediaIndex: mediaIndex)
+        // Aynı sayfaya ikinci karar: öncekinin zamanlayıcısı iptal, yerine
+        // yenisi. Sahip fikrini değiştirdiyse ağa yalnızca son kararı çıkmalı.
+        decisionJobs.removeValue(forKey: page.id)?.cancel()
+        pendingDecisions.put(
+            QueuedDecision(page: page, conversation: conversation, decision: decision)
+        )
+        decisionJobs[page.id] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.decisionWindowSeconds))
+            guard !Task.isCancelled else { return }
+            await self?.fireDecision(page.id)
+        }
+    }
+
+    /// Geri alma: çipe dokunmak ya da o sayfaya geri kaydırmak.
+    func undoDecision(_ pageID: String) {
+        guard let job = decisionJobs.removeValue(forKey: pageID) else { return }
+        job.cancel()
+        pendingDecisions.remove(pageID)
+        toast = Strings.swipeUndone
+    }
+
+    /// Bekleyen kararları ANINDA gönderir — uygulamadan çıkılırken.
+    ///
+    /// ``commitPendingNow()`` ile aynı gerekçe: kaydırıp ana ekrana basmak,
+    /// kararı sessizce yutmamalı.
+    func commitDecisionsNow() {
+        let waiting = pendingDecisions.all
+        for job in decisionJobs.values { job.cancel() }
+        decisionJobs.removeAll()
+        pendingDecisions.clear()
+        for queued in waiting { applyDecision(queued) }
+    }
+
+    private func fireDecision(_ pageID: String) {
+        guard let queued = pendingDecisions[pageID] else { return }
+        decisionJobs.removeValue(forKey: pageID)
+        pendingDecisions.remove(pageID)
+        applyDecision(queued)
+    }
+
+    private func applyDecision(_ queued: QueuedDecision) {
+        switch queued.decision {
+        case .report:
+            markViolation(queued.conversation, mediaIndex: queued.page.mediaIndex)
+        case .dismiss:
+            markNotViolation(queued.conversation, mediaIndex: queued.page.mediaIndex)
+        }
+    }
+
+    /// Bu konuşmada HENÜZ KARAR VERİLMEMİŞ videoların sıraları.
+    ///
+    /// Toplu eleme yalnızca bunlara dokunuyor: onaylanmış, elenmiş ya da isteği
+    /// yolda olan bir videoyu toplu bir hareketle yeniden karara bağlamak,
+    /// sahibin tek tek verdiği kararları toplu bir dokunuşla ezmek olurdu.
+    func undecidedIndices(_ conversation: Conversation) -> [Int] {
+        conversation.urls.indices.filter { index in
+            // Bekleyen bir karar da "karar verilmiş" sayılıyor: üç saniye sonra
+            // dolacak ve toplu elemenin üstüne yazacaktı.
+            let page = FeedPage(conversationKey: conversation.key, mediaIndex: index)
+            if pendingDecisions[page.id] != nil { return false }
+            switch ihbarMark(conversationKey: conversation.key, mediaIndex: index).phase {
+            case .notViolation, .approved, .verified, .verifiedPending,
+                 .busy, .rejecting, .noToken:
+                return false
+            default:
+                return true
+            }
+        }
+    }
+
+    /// Konuşmanın karar verilmemiş videolarını TEK istekte eler.
+    ///
+    /// NEDEN TEK İSTEK: iki yazma ucu tek bir oran sınırı kovasını paylaşıyor
+    /// (dakikada yirmi). On beş videoyu tek tek elemek o bütçenin dörtte üçünü
+    /// yakıyor ve aynı dakikadaki GERÇEK ihbarı da engelliyor.
+    ///
+    /// ÖNCE BEKLEYEN KARARLAR İPTAL EDİLİYOR: aksi hâlde üç saniye sonra dolan
+    /// bir olumlu karar toplu elemenin üstüne yazardı (sunucuda son dokunuş
+    /// kazanıyor) ve bir de boşuna çıkarım ısmarlardı.
+    func dismissAll(_ conversation: Conversation) {
+        guard ihbarAvailable else { return }
+        for queued in pendingDecisions.of(conversationKey: conversation.key) {
+            undoDecision(queued.page.id)
+        }
+
+        let indices = undecidedIndices(conversation)
+        guard !indices.isEmpty else { return }
+        guard ihbar.hasToken else {
+            for index in indices {
+                ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .noToken)
+            }
+            return
+        }
+
+        for index in indices {
+            ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .rejecting)
+        }
+
+        let items = indices.map { ihbarItem(for: conversation, mediaIndex: $0) }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let answers = try await ihbar.rejectBulk(items)
+                // Yanıt İSTEK SIRASIYLA dönüyor. Uzunluk tutmuyorsa HİÇBİR
+                // işaret boyanmıyor ve durum yeniden soruluyor: kayan bir liste
+                // yanlış videoyu elenmiş gösterir ve bu, fark edilmesi en zor
+                // hata türü.
+                guard answers.items.count == indices.count else {
+                    for index in indices {
+                        ihbarMarks.removeValue(forKey: Self.ihbarKey(conversation.key, index))
+                    }
+                    refreshIhbar([conversation])
+                    return
+                }
+                for (position, index) in indices.enumerated() {
+                    ihbarMarks[Self.ihbarKey(conversation.key, index)] = answers.items[position].mark
+                }
+                toast = Strings.bulkDismissResult(answers.applied, answers.skipped)
+            } catch is IhbarTokenMissingError {
+                for index in indices {
+                    ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .noToken)
+                }
+            } catch let error as IhbarError {
+                for index in indices {
+                    ihbarMarks[Self.ihbarKey(conversation.key, index)] =
+                        IhbarMark(phase: .rejectError, detail: error.message)
+                }
+                toast = error.message
+            } catch {
+                // YARIM UYGULANMIŞ OLABİLİR: sunucu bazı öğeleri işleyip düşmüş
+                // olabilir ve elimizde hangilerinin işlendiği bilgisi yok.
+                // İşaretleri uydurmak yerine SUNUCUYA YENİDEN SORUYORUZ.
+                for index in indices {
+                    ihbarMarks.removeValue(forKey: Self.ihbarKey(conversation.key, index))
+                }
+                refreshIhbar([conversation])
+                toast = Strings.bulkDismissFailed
+            }
+        }
     }
 
     // MARK: - İhbar köprüsü
@@ -308,9 +489,20 @@ final class GalleryViewModel {
         // belirlerdi ve "son dokunuş kazanır" kuralı, tam da sahibin fikrini
         // değiştirdiği anda yalan olurdu. Elenmiş kayda (.notViolation) basmak ise
         // SERBEST — fikir değiştirmenin yolu bu.
-        guard current.phase != .busy, current.phase != .rejecting,
-              current.phase != .verified, current.phase != .approved else {
+        //
+        // SESSİZ YUTMA YOK ARTIK: düğme çağında yutulan dokunuşun geri bildirimi
+        // düğmenin DEĞİŞMEYEN rengiydi; kaydırmada kart uçup gidiyor ve ekranda
+        // hiçbir iz kalmıyor. Sahip kaydırmayı tekrarlıyor, olumsuz yönde
+        // tekrarladığında ise memura geri çekme bildirimi çıkıyor.
+        switch current.phase {
+        case .busy, .rejecting:
+            toast = Strings.ihbarInFlight
             return
+        case .verified, .approved:
+            toast = Strings.ihbarAlreadyReported
+            return
+        default:
+            break
         }
         guard ihbar.hasToken else {
             ihbarMarks[key] = IhbarMark(phase: .noToken)
@@ -356,9 +548,15 @@ final class GalleryViewModel {
         let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
         // Zaten elenmiş ya da yolda olan bir düğmeye yeniden basılmaz. Aynı
         // gerekçenin aynası: olumlu istek yoldayken (.busy) bu yol da kapalı.
-        guard current.phase != .busy, current.phase != .rejecting,
-              current.phase != .notViolation else {
+        switch current.phase {
+        case .busy, .rejecting:
+            toast = Strings.ihbarInFlight
             return
+        case .notViolation:
+            toast = Strings.ihbarAlreadyDismissed
+            return
+        default:
+            break
         }
         guard ihbar.hasToken else {
             ihbarMarks[key] = IhbarMark(phase: .noToken)
@@ -450,7 +648,24 @@ final class GalleryViewModel {
         for url in conversation.urls {
             failures.removeValue(forKey: repository.proxyURL(url)?.absoluteString ?? url)
         }
+
+        // ─── VİDEO SAYISI DEĞİŞTİYSE İŞARETLER KAYIYOR ───────────────────────
+        //
+        // Düz akışta her video bir sayfa; taze konuşma farklı sayıda video
+        // taşıyorsa ondan SONRAKİ her sayfa kayar. Ayrıca hem ihbar işaretleri
+        // hem elle küfür işaretleri SIRAYA çıpalı ("anahtar#sıra") — sayı
+        // değiştiğinde o işaretler başka videoların üstünde görünürdü, ki bu
+        // fark edilmesi en zor hata türü.
+        let countChanged = fresh.urls.count != conversation.urls.count
+        if countChanged {
+            for mediaIndex in conversation.urls.indices {
+                ihbarMarks.removeValue(forKey: Self.ihbarKey(conversation.key, mediaIndex))
+            }
+        }
+
         items[index] = fresh
+
+        if countChanged { refreshIhbar([fresh]) }
         return true
     }
 
@@ -535,6 +750,13 @@ final class GalleryViewModel {
     }
 
     static let undoWindowSeconds: Double = 5
+
+    /// Kaydırma kararının ağa çıkmadan önce beklediği süre.
+    ///
+    /// SİLME PENCERESİNDEN (5 sn) KISA, BİLEREK: karar, konuşmanın
+    /// silinmesinden önce yola çıkıyor. Uzatmak sahibi bekletir, kısaltmak geri
+    /// alma çipini okunamayacak kadar kısa ömürlü yapar.
+    static let decisionWindowSeconds: Double = 3
     static let pageSize = 5
     static let prefetchDistance = 3
     /// Covers the server-side index rebuild, which the first request only triggers.

@@ -166,7 +166,16 @@ final class GalleryRepository {
         request.timeoutInterval = 90
 
         let (data, response) = try await session.data(for: request)
-        try check((response as? HTTPURLResponse)?.statusCode ?? 0)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 { throw UnauthorizedError() }
+        if !(200..<300).contains(status) {
+            // Sunucu neden üretemediğini gövdede yazıyor ("Conversation not found", "No
+            // conversation messages found", model hatası). Eskiden yalnızca durum kodu
+            // taşınıyordu, sayfada da tek bir "üretilemedi" kalıyordu: arızanın nedeni
+            // yalnızca sunucu günlüğünden okunabiliyordu.
+            let reason = (try? decoder.decode(CaptionError.self, from: data))?.reason
+            throw CaptionFailedError(status: status, serverMessage: reason)
+        }
         return try decoder.decode(CaptionResponse.self, from: data).caption
     }
 

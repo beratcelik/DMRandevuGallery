@@ -71,6 +71,9 @@
 
     <!-- Trafik İhbar köprüsü -->
     <string name="ihbar_mark">İhlal olarak işaretle</string>
+    <string name="ihbar_already_reported">Bu video zaten ihbar edildi</string>
+    <string name="ihbar_already_dismissed">Bu video zaten elendi</string>
+    <string name="ihbar_in_flight">İstek yolda — bekleyin</string>
     <string name="ihbar_marking">Gönderiliyor…</string>
     <string name="ihbar_marked">İhlal olarak işaretlendi</string>
     <string name="ihbar_approved">İhbar onaylandı</string>
@@ -95,6 +98,31 @@
     <string name="ihbar_token_save">Kaydet</string>
     <string name="cancel">Vazgeç</string>
 
+    <!-- Kaydırarak karar: sağa at = ihbar et, sola at = ihlal değil -->
+    <string name="swipe_report">İHBAR ET</string>
+    <string name="swipe_dismiss">İHLAL DEĞİL</string>
+    <string name="swipe_reported">İhbar ediliyor</string>
+    <string name="swipe_dismissed">Eleniyor</string>
+    <string name="swipe_undo">Geri al</string>
+    <string name="swipe_undone">Karar geri alındı</string>
+    <string name="video_position">%1$d/%2$d</string>
+    <string name="ihbar_verified_pending">Teyit alındı</string>
+    <string name="ihbar_verified_pending_detail">Kayıt açılınca ihbar edilecek</string>
+    <string name="ihbar_media_count">%1$d videoluk ihbar</string>
+
+    <!-- Toplu eleme -->
+    <string name="bulk_dismiss">Tümünü ele</string>
+    <string name="bulk_dismiss_title">Bu müşterinin videoları elensin mi?</string>
+    <string name="bulk_dismiss_explain">%1$d video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; onları geri çekmek için tek tek elemeniz gerekir.</string>
+    <string name="bulk_dismiss_confirm">Hepsini ele</string>
+    <string name="bulk_dismiss_result">%1$d video elendi, %2$d atlandı</string>
+    <string name="bulk_dismiss_failed">Toplu eleme başarısız — tekrar deneyin</string>
+
+    <!-- Geri çekme penceresi: kayıtta başka video varsa metin değişiyor -->
+    <string name="ihbar_retract_detach_title">Bu video ihbardan çıkarılsın mı?</string>
+    <string name="ihbar_retract_detach_explain">Bu ihbar %1$d video taşıyor ve memurlara iletildi. Yalnızca bu video kayıttan çıkarılacak; ihbar kalan videolarla memurda kalmaya devam edecek.</string>
+    <string name="ihbar_retract_detach_confirm">Videoyu çıkar</string>
+
     <!-- Playback -->
     <string name="playback_speed">%1$d×</string>
     <string name="resume">Devam et</string>
@@ -111,4 +139,33 @@
     <string name="share_preparing">Video hazırlanıyor…</string>
     <string name="share_failed">Paylaşım başarısız</string>
     <string name="close">Kapat</string>
+    <!-- Akış tanıtımı: kurulum başına bir kez, ilk açılışta. -->
+    <string name="tour_title">Nasıl kullanılır</string>
+    <string name="tour_gestures">Hareketler</string>
+    <string name="tour_buttons">Düğmeler</string>
+    <string name="tour_done">Anladım</string>
+
+    <string name="tour_right_title">Sağa at · İhbar et</string>
+    <string name="tour_right_detail">Videoda kural ihlali var. Karar üç saniye bekliyor; o sürede \"Geri al\"a basmak ya da videoya geri kaydırmak iptal ediyor.</string>
+    <string name="tour_left_title">Sola at · İhbar etme</string>
+    <string name="tour_left_detail">Video ihbardan düşüyor. Birden çok videolu bir ihbarda yalnızca bu video ayrılıyor, kalanı memurda duruyor.</string>
+    <string name="tour_up_title">Yukarı kaydır · Sonraki video</string>
+    <string name="tour_up_detail">Aynı müşterinin sıradaki videosu. Videoları bitince sonraki müşteriye geçiyor ve geride kalan konuşma siliniyor.</string>
+    <string name="tour_back_title">Aşağı kaydır · Vazgeç</string>
+    <string name="tour_back_detail">Karar verdiğin videoya geri dönmek kararı iptal ediyor; ayrıldığın müşteriye dönmek silmeyi iptal ediyor.</string>
+    <string name="tour_back_detail_plain">Ayrıldığın müşteriye beş saniye içinde geri dönmek silmeyi iptal ediyor.</string>
+    <string name="tour_tap_title">Dokun · Duraklat</string>
+    <string name="tour_tap_detail">Bir daha dokunmak devam ettiriyor. Dokunuş aynı zamanda ilerleme çubuğunu getiriyor.</string>
+    <string name="tour_hold_title">Basılı tut · 3× hızlı</string>
+    <string name="tour_hold_detail">Parmağını kaldırınca normal hıza dönüyor.</string>
+
+    <string name="tour_face_detail">Dışa aktarılan videoda yüzleri bulanıklaştırır.</string>
+    <string name="tour_plate_detail">Plakaları bulanıklaştırır. Uzun basmak hızlı ile titiz arasında geçiş yapar; köşedeki şimşek hızlı olduğunu gösterir.</string>
+    <string name="tour_watermark_detail">Videoya hesap filigranı basar. Oynatıcıda da görünür: burada ne görüyorsan dışa aktarılan da odur.</string>
+    <string name="tour_censor_detail">Küfürleri bipler. Uzun basmak otomatik ile elle arasında geçiş yapar; ilk açılışta model dosyalarını indirir.</string>
+    <string name="tour_bulk_detail">Bu müşterinin karar verilmemiş videolarının hepsini tek seferde eler. Yalnızca en az iki video varken çıkar.</string>
+    <string name="tour_download_detail">Videoyu seçili filtrelerle telefona kaydeder.</string>
+    <string name="tour_story_detail">Videoyu doğrudan Instagram Hikaye düzenleyicisine verir.</string>
+    <string name="tour_reels_detail">Videoyu galeriye kaydeder ve caption\'ı panoya kopyalar; Reels\'te videoyu seçip yapıştırırsın.</string>
+    <string name="tour_caption_detail">Konuşmadan yapay zekâ ile haber metni üretir.</string>
 </resources>
