@@ -10,18 +10,20 @@ import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
-import kotlin.math.sin
 
 /**
  * Burns the account handle into the video on a slow, never-quite-repeating path around the frame.
  *
  * A corner watermark is one crop away from gone. This one visits the whole frame over a few
- * minutes, so there is no safe crop, while drifting slowly enough to read and to ignore.
- * The path is two sine waves whose periods do not divide into each other, which wanders without
- * ever jumping — a genuinely random position each frame would strobe and be unreadable.
+ * minutes, so there is no safe crop, while drifting slowly enough to read and to ignore. Each
+ * instance takes its own [WanderPath], so no two videos start in the same place or move the same
+ * way — which also means the preview and the export of one video do not follow the same path.
  */
 @UnstableApi
-class WanderingWatermark(handle: String) : TextOverlay() {
+class WanderingWatermark(
+    handle: String,
+    private val path: WanderPath = WanderPath()
+) : TextOverlay() {
 
     private val text = SpannableString("@${handle.removePrefix("@")}").apply {
         setSpan(ForegroundColorSpan(Color.WHITE), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -54,8 +56,8 @@ class WanderingWatermark(handle: String) : TextOverlay() {
             .setScale(scale, scale)
             .setAlphaScale(ALPHA)
             .setBackgroundFrameAnchor(
-                (sin(seconds * TAU / PERIOD_X_SECONDS) * reachX).toFloat(),
-                (sin(seconds * TAU / PERIOD_Y_SECONDS + PHASE) * reachY).toFloat()
+                (path.x(seconds) * reachX).toFloat(),
+                (path.y(seconds) * reachY).toFloat()
             )
             .build()
     }
@@ -69,14 +71,5 @@ class WanderingWatermark(handle: String) : TextOverlay() {
 
         /** Keeps the label off the very edge, where players and crops eat into the frame. */
         const val MARGIN = 0.04f
-
-        // Coprime periods, so horizontal and vertical drift stay out of step and the path does
-        // not settle into a short loop. Slow enough to sit still under the eye — a full sweep
-        // across the frame takes about a quarter of a minute — while a clip of any length still
-        // sees the label move well away from wherever it started.
-        const val PERIOD_X_SECONDS = 31.0
-        const val PERIOD_Y_SECONDS = 23.0
-        const val PHASE = 1.3
-        const val TAU = 2 * Math.PI
     }
 }

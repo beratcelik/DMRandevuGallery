@@ -22,7 +22,7 @@ enum VideoFilterPipeline {
         let mosaic = try blur.flatMap { timeline -> MosaicRenderer? in
             timeline.isEmpty ? nil : try MosaicRenderer(timeline: timeline)
         }
-        let mark = watermark.map(WanderingWatermark.init(handle:))
+        let mark = watermark.map { WanderingWatermark(handle: $0) }
         guard mosaic != nil || mark != nil else { return nil }
 
         let composition = try await AVMutableVideoComposition.videoComposition(
@@ -53,6 +53,9 @@ enum VideoFilterPipeline {
         for asset: AVAsset,
         watermark: WatermarkSwitch
     ) async throws -> AVMutableVideoComposition {
+        // One path per video. The switch keeps a single watermark across videos, so without this
+        // every video in the feed would start the label in the same place.
+        let path = WanderPath()
         let composition = try await AVMutableVideoComposition.videoComposition(
             with: asset
         ) { request in
@@ -61,7 +64,10 @@ enum VideoFilterPipeline {
                 return
             }
             let timeUS = request.compositionTime.microseconds ?? 0
-            request.finish(with: mark.apply(to: request.sourceImage, at: timeUS), context: nil)
+            request.finish(
+                with: mark.apply(to: request.sourceImage, at: timeUS, along: path),
+                context: nil
+            )
         }
         composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2

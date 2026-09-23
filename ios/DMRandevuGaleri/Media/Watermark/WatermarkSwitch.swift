@@ -28,7 +28,7 @@ final class WatermarkSwitch: @unchecked Sendable {
         defer { lock.unlock() }
         guard handle != self.handle else { return }
         self.handle = handle
-        current = handle.map(WanderingWatermark.init(handle:))
+        current = handle.map { WanderingWatermark(handle: $0) }
     }
 
     /// What to draw this frame, or nil while the watermark is off.

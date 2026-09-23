@@ -5,23 +5,26 @@ import UIKit
 /// Burns the account handle into the video on a slow, never-quite-repeating path around the frame.
 ///
 /// A corner watermark is one crop away from gone. This one visits the whole frame over a few
-/// minutes, so there is no safe crop, while drifting slowly enough to read and to ignore. The path
-/// is two sine waves whose periods do not divide into each other, which wanders without ever
-/// jumping — a genuinely random position each frame would strobe and be unreadable.
+/// minutes, so there is no safe crop, while drifting slowly enough to read and to ignore. It moves
+/// along a ``WanderPath``, drawn at random per instance — or per video in the preview, which keeps
+/// one instance and hands each video's composition a path of its own.
 ///
 /// Unchecked rather than plainly `Sendable` only because `CIImage` has no such annotation. The one
-/// stored property is a `let` holding an immutable image, which matters: the video composition
+/// stored properties are `let`s holding an immutable image and value, which matters: the video composition
 /// calls ``apply(to:at:)`` from several threads at once.
 final class WanderingWatermark: @unchecked Sendable {
 
     private let label: CIImage
+    private let path: WanderPath
 
-    init(handle: String) {
+    init(handle: String, path: WanderPath = WanderPath()) {
         label = Self.render(handle: handle)
+        self.path = path
     }
 
-    /// `image` with the handle drifting over it at `timeUS`.
-    func apply(to image: CIImage, at timeUS: Int64) -> CIImage {
+    /// `image` with the handle drifting over it at `timeUS`, along `path` when one is given and
+    /// this watermark's own otherwise.
+    func apply(to image: CIImage, at timeUS: Int64, along path: WanderPath? = nil) -> CIImage {
         let frame = image.extent
         let size = label.extent.size
         guard frame.width > 0, frame.height > 0, size.width > 0, size.height > 0 else {
@@ -38,8 +41,9 @@ final class WanderingWatermark: @unchecked Sendable {
         let reachY = max(1 - height / frame.height - Self.margin, 0)
 
         let seconds = Double(timeUS) / 1_000_000
-        let offsetX = CGFloat(sin(seconds * Self.tau / Self.periodXSeconds)) * reachX
-        let offsetY = CGFloat(sin(seconds * Self.tau / Self.periodYSeconds + Self.phase)) * reachY
+        let path = path ?? self.path
+        let offsetX = CGFloat(path.x(at: seconds)) * reachX
+        let offsetY = CGFloat(path.y(at: seconds)) * reachY
 
         let centreX = frame.midX + offsetX * frame.width / 2
         let centreY = frame.midY + offsetY * frame.height / 2
@@ -109,13 +113,4 @@ final class WanderingWatermark: @unchecked Sendable {
     /// Drawn at this size and scaled down, so the glyphs stay crisp on a 4K frame.
     private static let pointSize: CGFloat = 96
     private static let padding: CGFloat = 22
-
-    // Coprime periods, so horizontal and vertical drift stay out of step and the path does not
-    // settle into a short loop. Slow enough to sit still under the eye — a full sweep across the
-    // frame takes about a quarter of a minute — while a clip of any length still sees the label
-    // move well away from wherever it started.
-    private static let periodXSeconds: Double = 31
-    private static let periodYSeconds: Double = 23
-    private static let phase: Double = 1.3
-    private static let tau: Double = 2 * .pi
 }
