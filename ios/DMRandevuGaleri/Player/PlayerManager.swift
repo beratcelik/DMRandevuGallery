@@ -188,6 +188,14 @@ final class PlayerManager {
         slotKeys[lru] = key
         // Repurposed: whatever it held is no longer loaded for this key.
         slotURLs[lru] = nil
+        // And emptied, not just forgotten. The page's layer binds to this player before play()
+        // has loaded anything, and a player still holding its last video drew that video's
+        // paused frame there until the new one's first frame arrived — a flash of an old video
+        // before every one that had not been pre-buffered. Same fix as the Android pool.
+        players[lru].pause()
+        players[lru].replaceCurrentItem(with: nil)
+        statusObservations[lru] = nil
+        slotFiltered[lru] = false
         clock += 1
         slotUsedAt[lru] = clock
         return lru
