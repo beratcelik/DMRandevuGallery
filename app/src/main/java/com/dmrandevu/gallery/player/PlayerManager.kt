@@ -93,7 +93,26 @@ class PlayerManager(
     private val slotWatermark = arrayOfNulls<String>(POOL_SIZE)
 
     /** The player currently holding [key], claiming the least recently used slot if it has none. */
-    fun playerFor(key: String): ExoPlayer = players[slots.claim(key)]
+    fun playerFor(key: String): ExoPlayer = players[claim(key)]
+
+    /**
+     * [SlotTable.claim], plus emptying a player the moment its slot is handed to another page.
+     *
+     * The page's view binds to its player on composition, before [play] has loaded anything, and
+     * a repurposed player was still holding the video it last played, paused on a decoded frame.
+     * Given the new surface, it drew that frame there — which opened the view's shutter — and the
+     * frame then sat on screen until the new video's first one replaced it: a flash of an old
+     * video before every one that had not been pre-buffered.
+     */
+    private fun claim(key: String): Int {
+        val index = slots.claim(key)
+        val player = players[index]
+        if (slots.urlAt(index) == null && player.mediaItemCount > 0) {
+            player.stop()
+            player.clearMediaItems()
+        }
+        return index
+    }
 
     /**
      * The player already holding [key], or null. Unlike [playerFor] this claims nothing, so it is
@@ -125,7 +144,7 @@ class PlayerManager(
 
     /** Loads [url] on this conversation's player and starts it, pausing every other player. */
     fun play(key: String, url: String) {
-        val index = slots.claim(key)
+        val index = claim(key)
         visibleSlot = index
         load(index, url, watermarkHandle)
         players.forEachIndexed { i, other -> if (i != index) other.playWhenReady = false }
@@ -147,7 +166,7 @@ class PlayerManager(
         // was never loaded, having evicted the one on screen — whose view then bound to a player
         // with nothing prepared and showed black, with no error anywhere to say why.
         if (slots.usesGlAt(slots.wouldServe(key))) return
-        val index = slots.claim(key)
+        val index = claim(key)
         players[index].playWhenReady = false
         load(index, url, watermark = null)
     }
