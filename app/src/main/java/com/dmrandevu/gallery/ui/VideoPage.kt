@@ -90,6 +90,7 @@ import com.dmrandevu.gallery.data.IhbarPhase
 import com.dmrandevu.gallery.data.saysSomething
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.InstagramSharing
+import com.dmrandevu.gallery.media.ShareTrace
 import com.dmrandevu.gallery.media.VideoExporter
 import com.dmrandevu.gallery.player.PlaybackFailure
 import com.dmrandevu.gallery.player.PlayerManager
@@ -1145,9 +1146,11 @@ fun VideoPage(
                             val file = downloader.downloadForShare(
                                 rawUrl,
                                 conversation.clientName,
-                                viewModel.exportOptions(conversation.key, page.mediaIndex)
+                                viewModel.exportOptions(conversation.key, page.mediaIndex),
+                                playerMs = durationMs.takeIf { it > 0 }
                             ) { exportProgress = it }
-                            InstagramSharing.openStoryComposer(context, file)
+                            val storyOpened = InstagramSharing.openStoryComposer(context, file)
+                            ShareTrace.log(context, "story handoff: opened=$storyOpened")
                         } catch (e: UnauthorizedException) {
                             viewModel.reportSessionLost()
                         } catch (e: VideoExporter.ExportFailedException) {
@@ -1201,7 +1204,8 @@ fun VideoPage(
                             val file = downloader.downloadForShare(
                                 rawUrl,
                                 conversation.clientName,
-                                viewModel.exportOptions(conversation.key, page.mediaIndex)
+                                viewModel.exportOptions(conversation.key, page.mediaIndex),
+                                playerMs = durationMs.takeIf { it > 0 }
                             ) { exportProgress = it }
                             exportProgress = null
 
@@ -1210,6 +1214,7 @@ fun VideoPage(
                             // bize SÖYLEMİYOR; operatör hata penceresiyle kalıyor ve
                             // galerideki kopya o sessiz reddin tek telafisi oluyor.
                             val saved = downloader.saveFileToGallery(file, conversation.clientName)
+                            ShareTrace.log(context, "reels gallery copy: saved=$saved")
 
                             captioningReels = true
                             val caption = try {
@@ -1229,6 +1234,11 @@ fun VideoPage(
                             // bile doğru diyor.
                             val inComposer = InstagramSharing.openReelComposer(context, file)
                             val opened = inComposer || InstagramSharing.openInstagram(context)
+                            ShareTrace.log(
+                                context,
+                                "reels handoff: composer=$inComposer opened=$opened " +
+                                    "caption=$hasCaption file=${file.name}"
+                            )
                             Toast.makeText(
                                 context,
                                 when {
