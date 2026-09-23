@@ -615,11 +615,30 @@ struct VideoPageView: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .accessibilityIdentifier("pausedIndicator")
             } else if holding {
-                SpeedBadge(speed: Int(Self.holdSpeed))
-                    .accessibilityIdentifier("speedBadge")
+                speedBadge
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// KENARDA, ORTADA DEĞİL: hızlı oynatma tam da operatörün videoya dikkatle baktığı an;
+    /// ortadaki rozet bakılan ayrıntının üstüne oturuyordu. Sol alt köşe, geri alma çipiyle aynı
+    /// katman kuralı; çip oradaysa onun üstüne çıkıyor, altına girmiyor. Android ikiziyle aynı.
+    private var speedBadge: some View {
+        VStack {
+            Spacer()
+            HStack {
+                SpeedBadge(speed: Int(Self.holdSpeed))
+                    .accessibilityIdentifier("speedBadge")
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(
+                .bottom,
+                ihbarBottomPadding + chromeInsets.bottom
+                    + (model.pendingDecisions.latest == nil ? 0 : 56)
+            )
+        }
     }
 
     private var header: some View {
