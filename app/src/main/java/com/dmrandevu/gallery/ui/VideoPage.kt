@@ -655,10 +655,23 @@ fun VideoPage(
             )
         }
 
+        // KENARDA, ORTADA DEĞİL: hızlı oynatma tam da operatörün videoya dikkatle baktığı an;
+        // ortadaki rozet bakılan ayrıntının üstüne oturuyordu. Sol alt köşe, sağ şeritle aynı
+        // yükseklikte; geri alma çipi oradaysa onun üstüne çıkıyor, altına girmiyor.
         if (holding) {
+            val undoShowing = viewModel.pendingDecisions.all().isNotEmpty()
             SpeedBadge(
                 speed = HOLD_SPEED.toInt(),
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(
+                        start = 12.dp,
+                        bottom = when {
+                            censorAudio -> 200.dp
+                            controlsShown -> 148.dp
+                            else -> 92.dp
+                        } + if (undoShowing) 56.dp else 0.dp
+                    )
             )
         }
 
