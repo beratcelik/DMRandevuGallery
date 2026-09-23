@@ -134,8 +134,27 @@ struct GalleryView: View {
                         .id(page.id)
                     }
                 }
+
+                // SON VİDEODAN SONRA "hepsini gördün" sayfası. Olmadığında akış son videoda
+                // duruyordu ve operatör bitip bitmediğini anlamak için boşuna kaydırıyordu.
+                EndOfFeedPage(
+                    isActivePage: currentPageID == Self.endPageID,
+                    stillLoading: model.loading || model.hasMore,
+                    playerManager: playerManager,
+                    onNeedMore: { await model.loadMore() }
+                )
+                .containerRelativeFrame([.horizontal, .vertical])
+                .id(Self.endPageID)
             }
             .scrollTargetLayout()
+        }
+        // Yeni müşteriler son sayfadayken gelirse ilk yeni videoya geçiliyor. Konum kimlikle
+        // tutulduğu için, yoksa görünüm "son" sayfayı izler ve yeni videoların hepsinin üstünden
+        // atlardı. Android bunu son sayfanın anahtarını sırası yaparak çözüyor.
+        .onChange(of: model.feed.count) { oldCount, newCount in
+            guard currentPageID == Self.endPageID, newCount > oldCount,
+                  model.feed.indices.contains(oldCount) else { return }
+            currentPageID = model.feed[oldCount].id
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentPageID)
@@ -160,17 +179,18 @@ struct GalleryView: View {
         return model.feed[index + 1].id
     }
 
-    /// Karar verildikten sonra bir sonraki videoya geçiş.
-    ///
-    /// SON SAYFADA HİÇBİR YERE GİTMİYORUZ: kaydıracak yer yok ve zorlamak,
-    /// kararı vermiş sayfayı titretirdi.
+    /// Karar verildikten sonra bir sonraki videoya geçiş; son videodan sonra
+    /// "hepsini gördün" sayfasına.
     private func advance(from page: FeedPage) {
-        guard let index = model.feed.firstIndex(of: page),
-              model.feed.indices.contains(index + 1) else { return }
+        guard let index = model.feed.firstIndex(of: page) else { return }
+        let next = model.feed.indices.contains(index + 1) ? model.feed[index + 1].id : Self.endPageID
         withAnimation(.easeOut(duration: 0.25)) {
-            currentPageID = model.feed[index + 1].id
+            currentPageID = next
         }
     }
+
+    /// Never a video page's id, which is always "conversation#index".
+    private static let endPageID = "end-of-feed"
 
     private func makePlayerManager() -> PlayerManager {
         let manager = PlayerManager(
@@ -217,4 +237,63 @@ struct ToastView: View {
         .animation(.easeInOut(duration: 0.2), value: message)
         .allowsHitTesting(false)
     }
+}
+
+/// The page after the last video.
+///
+/// While the server may still have more customers it only shows a spinner, and keeps asking for
+/// them. Saying "all seen" and then having new videos appear under it would be wrong. When
+/// nothing more is coming, it says so.
+///
+/// It keeps asking rather than asking once because a batch can arrive with nothing new in it
+/// (customers the app already holds) while the server still says there is more. A single request
+/// would then leave the spinner up for good. ``GalleryViewModel/loadMore(initial:)`` ignores calls
+/// while one is in flight, so repeating it is harmless.
+///
+/// Pauses every player on arrival. No video page is active here, so none of them would pause
+/// itself, and the last video would keep playing behind this page. Android twin: `EndOfFeedPage`
+/// in GalleryScreen.kt.
+private struct EndOfFeedPage: View {
+    let isActivePage: Bool
+    let stillLoading: Bool
+    let playerManager: PlayerManager
+    let onNeedMore: () async -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if stillLoading {
+                ProgressView().tint(.white)
+            } else {
+                VStack(spacing: 0) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Text(Strings.allSeen)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.top, 16)
+                    Text(Strings.endOfFeed)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(.top, 6)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .accessibilityIdentifier("endOfFeed")
+            }
+        }
+        .onChange(of: isActivePage, initial: true) { _, active in
+            if active { playerManager.pauseAll() }
+        }
+        .task(id: isActivePage && stillLoading) {
+            while isActivePage && stillLoading && !Task.isCancelled {
+                await onNeedMore()
+                try? await Task.sleep(for: Self.moreRetry)
+            }
+        }
+    }
+
+    /// How often the page asks again while the server still says there is more.
+    private static let moreRetry = Duration.milliseconds(1_500)
 }

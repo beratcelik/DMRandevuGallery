@@ -2,6 +2,13 @@ package com.dmrandevu.gallery.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +41,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.ServiceLocator
@@ -54,10 +62,14 @@ fun GalleryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
+    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
 
     // SAYFA SAYISI ARTIK VİDEO SAYISI: akış düzleşti (her sayfa bir video),
     // çünkü yatay eksen karara ayrıldı (sağa at = ihbar, sola at = ihlal değil).
-    val pagerState = rememberPagerState(pageCount = { viewModel.feed.size })
+    //
+    // ARTI BİR: son videodan sonra "hepsini gördün" sayfası. Olmadığında akış son
+    // videoda duruyordu ve operatör bitip bitmediğini anlamak için boşuna kaydırıyordu.
+    val pagerState = rememberPagerState(pageCount = { viewModel.feed.size + 1 })
     viewModel.currentPageProvider = { pagerState.currentPage }
     viewModel.keepCurrentPage = pagerState::requestScrollToPage
 
@@ -171,6 +183,11 @@ fun GalleryScreen(
                     // Anahtar SAYFA kimliği ("konuşma#sıra"): sıra numarası
                     // kullanmak, bir konuşma silindiğinde sayfaların altından
                     // kayması demekti.
+                    //
+                    // Son sayfanın anahtarı SIRASI: yeni müşteriler yüklenince o sıraya
+                    // ilk yeni video oturuyor ve operatör onu görüyor. Sabit bir "son"
+                    // anahtarı olsaydı sayfalayıcı onu izleyip yeni videoların hepsinin
+                    // üstünden atlardı.
                     key = { index -> viewModel.feed.getOrNull(index)?.id ?: index },
                     beyondViewportPageCount = 1,
                     modifier = Modifier.fillMaxSize()
@@ -179,7 +196,15 @@ fun GalleryScreen(
                     val conversation = feedPage?.let { p ->
                         viewModel.items.firstOrNull { it.key == p.conversationKey }
                     }
-                    if (feedPage != null && conversation != null) {
+                    if (page >= viewModel.feed.size) {
+                        EndOfFeedPage(
+                            isActivePage = pagerState.settledPage == page,
+                            stillLoading = loading || hasMore,
+                            playerManager = playerManager,
+                            onNeedMore = { viewModel.loadMore() },
+                            modifier = Modifier.padding(padding)
+                        )
+                    } else if (feedPage != null && conversation != null) {
                         VideoPage(
                             conversation = conversation,
                             page = feedPage,
@@ -188,12 +213,11 @@ fun GalleryScreen(
                             playerManager = playerManager,
                             viewModel = viewModel,
                             // Karar verildikten sonra bir sonraki videoya:
-                            // kart uçuyor ve akış ilerliyor. Son sayfadaysak
-                            // hiçbir yere gitmiyoruz — kaydıracak yer yok ve
-                            // zorlamak, kararı vermiş sayfayı titretirdi.
+                            // kart uçuyor ve akış ilerliyor. Son videodan sonra
+                            // "hepsini gördün" sayfasına.
                             onAdvance = {
                                 val next = page + 1
-                                if (next < viewModel.feed.size) {
+                                if (next < pagerState.pageCount) {
                                     scope.launch { pagerState.animateScrollToPage(next) }
                                 }
                             },
@@ -224,3 +248,70 @@ fun GalleryScreen(
         }
     }
 }
+
+/**
+ * The page after the last video.
+ *
+ * While the server may still have more customers it only shows a spinner, and keeps asking for
+ * them. Saying "all seen" and then having new videos appear under it would be wrong. When new
+ * videos arrive, this index becomes the first of them and this page is gone. When nothing more
+ * is coming, it says so.
+ *
+ * It keeps asking rather than asking once because a batch can arrive with nothing new in it
+ * (customers the app already holds) while the server still says there is more. A single request
+ * would then leave the spinner up for good. [GalleryViewModel.loadMore] ignores calls while one
+ * is in flight, so repeating it is harmless.
+ *
+ * Pauses every player on arrival. No video page is active here, so none of them would pause
+ * itself, and the last video would keep playing behind this page.
+ */
+@Composable
+private fun EndOfFeedPage(
+    isActivePage: Boolean,
+    stillLoading: Boolean,
+    playerManager: PlayerManager,
+    onNeedMore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LaunchedEffect(isActivePage) {
+        if (isActivePage) playerManager.pauseAll()
+    }
+    LaunchedEffect(isActivePage, stillLoading) {
+        while (isActivePage && stillLoading) {
+            onNeedMore()
+            delay(MORE_RETRY_MS)
+        }
+    }
+    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        if (stillLoading) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center))
+        } else {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.all_seen),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.end_of_feed),
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+/** How often the end page asks again while the server still says there is more. */
+private const val MORE_RETRY_MS = 1_500L

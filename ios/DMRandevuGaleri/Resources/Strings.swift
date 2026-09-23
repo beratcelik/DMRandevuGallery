@@ -26,6 +26,8 @@ enum Strings {
     // MARK: - Gallery
 
     static let emptyGallery = "Videolu konuşma bulunamadı"
+    static let allSeen = "Hepsini gördün"
+    static let endOfFeed = "Son müşteriye ulaşıldı"
     static let videoExpired = "Video süresi doldu"
     static let videoFailed = "Video yüklenemedi"
     static let videoRetry = "Tekrar dene"

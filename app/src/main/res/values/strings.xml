@@ -24,6 +24,7 @@
     <string name="video_retry">Tekrar dene</string>
     <string name="video_refresh_failed">Yeni bağlantı alınamadı — video sunucuda da yok olabilir</string>
     <string name="end_of_feed">Son müşteriye ulaşıldı</string>
+    <string name="all_seen">Hepsini gördün</string>
     <string name="logout">Çıkış</string>
 
     <!-- Actions -->
