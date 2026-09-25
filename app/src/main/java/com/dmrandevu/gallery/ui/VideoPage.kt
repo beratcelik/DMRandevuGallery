@@ -583,7 +583,12 @@ fun VideoPage(
                                 )
                             }
                         },
-                        update = { view -> view.player = playerManager.playerFor(page.id) },
+                        // Reading the generation makes this run again when the slot's player is
+                        // swapped for a fresh one, so the view never keeps a released player.
+                        update = { view ->
+                            playerManager.generation
+                            view.player = playerManager.playerFor(page.id)
+                        },
                         onRelease = { view -> view.player = null },
                         modifier = Modifier.fillMaxSize()
                     )

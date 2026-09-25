@@ -30,6 +30,11 @@ class SlotTable(val size: Int) {
         usesGl[index] = true
     }
 
+    /** For a slot whose player has been replaced: the new one has not touched the pipeline. */
+    fun clearUsesGl(index: Int) {
+        usesGl[index] = false
+    }
+
     fun setUrl(index: Int, url: String?) {
         urls[index] = url
     }
