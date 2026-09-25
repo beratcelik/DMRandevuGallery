@@ -47,7 +47,6 @@ import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.media.Downloader
 import com.dmrandevu.gallery.media.InstagramSharing
-import com.dmrandevu.gallery.media.ShareTrace
 import com.dmrandevu.gallery.media.ExportOptions
 import com.dmrandevu.gallery.media.VideoExporter
 import kotlinx.coroutines.launch
@@ -302,10 +301,8 @@ private fun shareVideo(context: Context, file: java.io.File) {
     if (InstagramSharing.REELS_COMPOSER_ENABLED &&
         InstagramSharing.openReelComposer(context, file)
     ) {
-        ShareTrace.log(context, "caption sheet handoff: composer file=${file.name}")
         return
     }
-    ShareTrace.log(context, "caption sheet handoff: share sheet file=${file.name}")
 
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val intent = Intent(Intent.ACTION_SEND).apply {

@@ -1127,12 +1127,9 @@ struct VideoPageView: View {
                     // (CaptionSheetView doğru yapıyordu, bu satırlar değil).
                     options: model.exportOptions(
                         conversationKey: conversation.key, mediaIndex: currentIndex
-                    ),
-                    playerMS: durationMS > 0 ? durationMS : nil
+                    )
                 ) { exportProgress = $0 }
-                let storyOpened = InstagramSharing.openStoryComposer(video: file)
-                ShareTrace.log("story handoff: opened=\(storyOpened)")
-                if !storyOpened {
+                if !InstagramSharing.openStoryComposer(video: file) {
                     model.toast = Strings.shareFailed
                 }
             } catch is UnauthorizedError {
@@ -1169,8 +1166,7 @@ struct VideoPageView: View {
                     // (CaptionSheetView doğru yapıyordu, bu satırlar değil).
                     options: model.exportOptions(
                         conversationKey: conversation.key, mediaIndex: currentIndex
-                    ),
-                    playerMS: durationMS > 0 ? durationMS : nil
+                    )
                 ) { exportProgress = $0 }
                 exportProgress = nil
 
@@ -1180,7 +1176,6 @@ struct VideoPageView: View {
                 // akış durmuyor — besteci videoyu zaten kendisi taşıyor.
                 var saved = true
                 do { try await PhotoLibrarySaver.save(file) } catch { saved = false }
-                ShareTrace.log("reels gallery copy: saved=\(saved)")
 
                 captioning = true
                 let caption = try await captionOrNil(rawURL)
@@ -1198,10 +1193,6 @@ struct VideoPageView: View {
                     caption: hasCaption ? caption : nil
                 )
                 let opened = inComposer || InstagramSharing.openInstagram()
-                ShareTrace.log(
-                    "reels handoff: composer=\(inComposer) opened=\(opened) "
-                        + "caption=\(hasCaption) file=\(file.lastPathComponent)"
-                )
 
                 // MESAJ YALNIZCA SÖYLEYECEK BİR ŞEY VARSA. iOS'un uygulama üstü bildirimi
                 // yok; ToastView uygulamanın İÇİNDE çiziliyor ve bir sonraki satır

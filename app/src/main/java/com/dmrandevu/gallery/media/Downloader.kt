@@ -129,33 +129,16 @@ class Downloader(
             }
         }
 
-    /**
-     * Downloads to cacheDir/share so the file can be handed to Instagram via FileProvider.
-     *
-     * [playerMs] is how long the player on screen found the video to be, the first length in
-     * the [ShareTrace] chain that ends at the file Instagram gets.
-     */
+    /** Downloads to cacheDir/share so the file can be handed to Instagram via FileProvider. */
     suspend fun downloadForShare(
         rawUrl: String,
         clientName: String,
         options: ExportOptions,
-        playerMs: Long? = null,
         onProgress: (Int) -> Unit = {}
     ): File = withContext(Dispatchers.IO) {
-        ShareTrace.log(
-            context,
-            "share start: client=$clientName player=${ShareTrace.format(playerMs)} " +
-                "options=$options url=${rawUrl.substringBefore('?')}" +
-                // The messaging CDN names the video only in the query; the rest of it is a
-                // signature that expires anyway.
-                (Uri.parse(rawUrl).getQueryParameter("asset_id")?.let { " asset_id=$it" } ?: "")
-        )
         try {
-            val processed = if (options.changesNothing) {
-                null
-            } else {
-                prepareProcessed(rawUrl, options, onProgress, expectedMs = playerMs)
-            }
+            val processed =
+                if (options.changesNothing) null else prepareProcessed(rawUrl, options, onProgress)
 
             val dir = File(context.cacheDir, "share").apply { mkdirs() }
             // One file per share keeps a previous, still-open share from being overwritten.
@@ -169,11 +152,7 @@ class Downloader(
             } else {
                 fetch(rawUrl) { source -> file.outputStream().use { out -> source.copyTo(out) } }
             }
-            ShareTrace.probe(context, "share file ${file.name}", file, playerMs)
             file
-        } catch (e: Exception) {
-            ShareTrace.log(context, "share failed: $e")
-            throw e
         } finally {
             clearWorkDir()
         }
@@ -190,29 +169,21 @@ class Downloader(
     private suspend fun prepareProcessed(
         rawUrl: String,
         options: ExportOptions,
-        onProgress: (Int) -> Unit,
-        expectedMs: Long? = null
+        onProgress: (Int) -> Unit
     ): File {
         val dir = workDir()
         val input = File(dir, "input.mp4")
         onProgress(0)
         fetch(rawUrl) { source -> input.outputStream().use { out -> source.copyTo(out) } }
         onProgress(DOWNLOAD_SHARE)
-        val inputMs = ShareTrace.probe(context, "downloaded", input, expectedMs)
 
         val output = File(dir, "processed.mp4")
         val result = exporter.export(input, output, options) { percent ->
             onProgress(DOWNLOAD_SHARE + percent * (100 - DOWNLOAD_SHARE) / 100)
         }
         return when (result) {
-            is VideoExporter.Result.Exported -> {
-                ShareTrace.probe(context, "exported", result.file, inputMs)
-                result.file
-            }
-            VideoExporter.Result.NothingToDo -> {
-                ShareTrace.log(context, "exported: nothing to do, original passed on")
-                input
-            }
+            is VideoExporter.Result.Exported -> result.file
+            VideoExporter.Result.NothingToDo -> input
         }
     }
 
@@ -239,37 +210,10 @@ class Downloader(
         val request = Request.Builder().url(repository.proxyUrl(rawUrl)).build()
         client.newCall(request).execute().use { response ->
             if (response.code == 401) throw UnauthorizedException()
-            if (!response.isSuccessful) {
-                ShareTrace.log(context, "fetch: HTTP ${response.code}")
-                throw IllegalStateException("HTTP ${response.code}")
-            }
+            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
             val body = response.body ?: throw IllegalStateException("Empty body")
-            // What the server promised against what arrived: a body cut short, or a partial
-            // (206) answer saved as though it were the whole video, would show up here first.
-            val source = CountingInputStream(body.byteStream())
-            write(source)
-            val advertised = response.header("Content-Length")?.toLongOrNull()
-            ShareTrace.log(
-                context,
-                "fetch: HTTP ${response.code} length=${advertised ?: "?"} read=${source.count}" +
-                    (response.header("Content-Range")?.let { " range=$it" } ?: "") +
-                    (if (advertised != null && advertised != source.count) " SUSPECT: short read" else "")
-            )
+            write(body.byteStream())
         }
-    }
-
-    private class CountingInputStream(private val inner: InputStream) : InputStream() {
-        var count = 0L
-            private set
-
-        override fun read(): Int = inner.read().also { if (it >= 0) count++ }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int =
-            inner.read(b, off, len).also { if (it > 0) count += it }
-
-        override fun available(): Int = inner.available()
-
-        override fun close() = inner.close()
     }
 
     private fun fileName(clientName: String): String {

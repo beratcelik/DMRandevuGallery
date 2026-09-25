@@ -181,10 +181,8 @@ struct CaptionSheetView: View {
                 // kalması, hiç açılmamasından iyi.
                 if InstagramSharing.reelsComposerEnabled,
                    InstagramSharing.openReelComposer(video: file, caption: text) {
-                    ShareTrace.log("caption sheet handoff: composer file=\(file.lastPathComponent)")
                     dismiss()
                 } else {
-                    ShareTrace.log("caption sheet handoff: share sheet file=\(file.lastPathComponent)")
                     shareFile = file
                 }
             } catch is UnauthorizedError {
