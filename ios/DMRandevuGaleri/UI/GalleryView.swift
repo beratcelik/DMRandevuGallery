@@ -138,13 +138,13 @@ struct GalleryView: View {
                 // SON VİDEODAN SONRA "hepsini gördün" sayfası. Olmadığında akış son videoda
                 // duruyordu ve operatör bitip bitmediğini anlamak için boşuna kaydırıyordu.
                 EndOfFeedPage(
-                    isActivePage: currentPageID == Self.endPageID,
+                    isActivePage: currentPageID == GalleryViewModel.endPageID,
                     stillLoading: model.loading || model.hasMore,
                     playerManager: playerManager,
                     onNeedMore: { await model.loadMore() }
                 )
                 .containerRelativeFrame([.horizontal, .vertical])
-                .id(Self.endPageID)
+                .id(GalleryViewModel.endPageID)
             }
             .scrollTargetLayout()
         }
@@ -152,7 +152,7 @@ struct GalleryView: View {
         // tutulduğu için, yoksa görünüm "son" sayfayı izler ve yeni videoların hepsinin üstünden
         // atlardı. Android bunu son sayfanın anahtarını sırası yaparak çözüyor.
         .onChange(of: model.feed.count) { oldCount, newCount in
-            guard currentPageID == Self.endPageID, newCount > oldCount,
+            guard currentPageID == GalleryViewModel.endPageID, newCount > oldCount,
                   model.feed.indices.contains(oldCount) else { return }
             currentPageID = model.feed[oldCount].id
         }
@@ -183,14 +183,12 @@ struct GalleryView: View {
     /// "hepsini gördün" sayfasına.
     private func advance(from page: FeedPage) {
         guard let index = model.feed.firstIndex(of: page) else { return }
-        let next = model.feed.indices.contains(index + 1) ? model.feed[index + 1].id : Self.endPageID
+        let next = model.feed.indices.contains(index + 1) ? model.feed[index + 1].id : GalleryViewModel.endPageID
         withAnimation(.easeOut(duration: 0.25)) {
             currentPageID = next
         }
     }
 
-    /// Never a video page's id, which is always "conversation#index".
-    private static let endPageID = "end-of-feed"
 
     private func makePlayerManager() -> PlayerManager {
         let manager = PlayerManager(

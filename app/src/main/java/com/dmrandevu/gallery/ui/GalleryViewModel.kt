@@ -210,7 +210,16 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                     val page = repo.loadPage(igId, offset, PAGE_SIZE)
                     val known = items.mapTo(HashSet()) { it.key }
                     val fresh = page.items.filter { it.key !in known && it.urls.isNotEmpty() }
+                    val endPage = feed.size
                     items.addAll(fresh)
+                    // Sitting on the end page when the rescan finds more: that page is now the
+                    // first new video. The pager's index did not move, so nothing settles, and
+                    // leaving this customer later has to know it was here.
+                    if (lastSettledKey == END_KEY && fresh.isNotEmpty() &&
+                        currentPageProvider() == endPage
+                    ) {
+                        lastSettledKey = fresh.first().key
+                    }
                     // Sayfa geldiği anda, sahip oraya kaydırmadan önce boyanıyor:
                     // düğmenin rengi videoyla birlikte hazır olmalı.
                     refreshIhbar(fresh)
@@ -250,6 +259,10 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * removed, so comparing them would delete the wrong customer.
      */
     fun onPageSettled(page: Int) {
+        if (page >= feed.size && feed.isNotEmpty()) {
+            onEndReached()
+            return
+        }
         val current = feed.getOrNull(page) ?: return
 
         // KARAR NE YAPILACAĞI SAF BİR KURALDA (ui/FeedPages.kt): silme, sistemin
@@ -278,6 +291,44 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         if (pendingDecisions[current.id] != null) undoDecision(current.id)
 
         maybeLoadMore(page)
+    }
+
+    /**
+     * The operator has gone past the last video.
+     *
+     * LEAVING THE LAST CUSTOMER DELETES IT, like leaving any other. It used to be the one customer
+     * nothing came after, so it was never passed and never deleted: the oldest conversation sat
+     * at the end of the feed for days.
+     *
+     * The settled key becomes [END_KEY], never a conversation's key. Clearing it instead would let
+     * the next load set it to the first conversation, and moving on from here to a video the
+     * rescan found would then read as leaving that first conversation and delete it.
+     *
+     * Then the feed is read again from the top. Conversations that got a new message during the
+     * session move to the top of the server's index, above the point this feed has already paged
+     * past, so they were never fetched: the counter said four were left while the feed had ended.
+     * Anything already in the feed is skipped, so only those come back, at the end.
+     */
+    private fun onEndReached() {
+        if (lastSettledKey == END_KEY) return
+        val last = items.lastOrNull()
+        if (last != null && lastSettledKey == last.key) queueDelete(last)
+        lastSettledKey = END_KEY
+        // Set now rather than when the rescan starts, so the end page shows the spinner from the
+        // first frame instead of flashing "all seen" first.
+        _hasMore.value = true
+        rescanFromTop()
+    }
+
+    private fun rescanFromTop() {
+        viewModelScope.launch {
+            // A load still in flight would write its own offset after this reset.
+            while (loadingMore) delay(RESCAN_WAIT_MS)
+            nextOffset = 0
+            committedDeletes = 0
+            _hasMore.value = true
+            loadMore()
+        }
     }
 
     /**
@@ -906,6 +957,10 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     companion object {
         const val UNDO_WINDOW_MS = 5_000L
+
+        /** What the end page settles as: matches no conversation, so the delete rule ignores it. */
+        private const val END_KEY = "\u0000end-of-feed"
+        private const val RESCAN_WAIT_MS = 200L
 
         /**
          * Kaydırma kararının ağa çıkmadan önce beklediği süre.

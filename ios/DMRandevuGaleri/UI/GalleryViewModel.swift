@@ -110,6 +110,12 @@ final class GalleryViewModel {
                 let known = Set(items.map(\.key))
                 let fresh = page.items.filter { !known.contains($0.key) && !$0.urls.isEmpty }
                 items.append(contentsOf: fresh)
+                // Still on the end page when the rescan finds more: the view moves there to the
+                // first new video without a scroll, so nothing settles, and leaving this customer
+                // later has to know it was here.
+                if lastSettledKey == Self.endKey, let first = fresh.first {
+                    lastSettledKey = first.key
+                }
                 // Sayfa geldiği anda, sahip oraya kaydırmadan önce boyanıyor:
                 // düğmenin rengi videoyla birlikte hazır olmalı.
                 refreshIhbar(fresh)
@@ -159,6 +165,10 @@ final class GalleryViewModel {
     /// müşterinin ikinci videosuna geçtiği anda o müşteri beş saniye sonra
     /// sessizce siliniyor. Ayrımı saf kural veriyor (ui/FeedPages.swift).
     func onPageSettled(pageID: String) {
+        if pageID == Self.endPageID {
+            onEndReached()
+            return
+        }
         guard let current = feed.first(where: { $0.id == pageID }) else { return }
 
         let action = onSettled(
@@ -184,6 +194,38 @@ final class GalleryViewModel {
         if pendingDecisions[current.id] != nil { undoDecision(current.id) }
 
         maybeLoadMore(around: current.conversationKey)
+    }
+
+    /// The operator has gone past the last video. Android twin: `onEndReached` in
+    /// GalleryViewModel.kt.
+    ///
+    /// LEAVING THE LAST CUSTOMER DELETES IT, like leaving any other. It used to be the one
+    /// customer nothing came after, so it was never passed and never deleted: the oldest
+    /// conversation sat at the end of the feed for days.
+    ///
+    /// The settled key becomes ``endKey``, never a conversation's key. Clearing it instead would
+    /// let the next load set it to the first conversation, and moving on from here to a video the
+    /// rescan found would then read as leaving that first conversation and delete it.
+    ///
+    /// Then the feed is read again from the top. Conversations that got a new message during the
+    /// session move to the top of the server's index, above the point this feed has already paged
+    /// past, so they were never fetched: the counter said four were left while the feed had
+    /// ended. Anything already in the feed is skipped, so only those come back, at the end.
+    private func onEndReached() {
+        guard lastSettledKey != Self.endKey else { return }
+        if let last = items.last, lastSettledKey == last.key { queueDelete(last) }
+        lastSettledKey = Self.endKey
+        // Set now rather than when the rescan starts, so the end page shows the spinner from the
+        // first frame instead of flashing "all seen" first.
+        hasMore = true
+        Task {
+            // A load still in flight would write its own offset after this reset.
+            while loadingMore { try? await Task.sleep(for: .milliseconds(200)) }
+            nextOffset = 0
+            committedDeletes = 0
+            hasMore = true
+            await loadMore()
+        }
     }
 
     private func maybeLoadMore(around key: String) {
@@ -756,6 +798,12 @@ final class GalleryViewModel {
     }
 
     static let undoWindowSeconds: Double = 5
+
+    /// The end page's id. Never a video page's, which is always "conversation#index".
+    static let endPageID = "end-of-feed"
+
+    /// What the end page settles as: matches no conversation, so the delete rule ignores it.
+    private static let endKey = "\u{0}end-of-feed"
 
     /// Kaydırma kararının ağa çıkmadan önce beklediği süre.
     ///
