@@ -397,6 +397,16 @@ struct VideoPageView: View {
                 }
             )
             .allowsHitTesting(model.ihbarAvailable && !flying)
+
+            // ÜSTTE, KARTIN İÇİNDE DEĞİL. Yakalayıcı kartın tamamını kaplayan bir UIKit
+            // görünümü ve ihbar açıkken dokunuşu o alıyor: "Tekrar dene" altında kalınca
+            // basılamıyordu, dokunuş videoyu duraklatmaya gidiyordu. Burada yalnızca düğmenin
+            // kendi alanı dokunuş alıyor; geri kalan her yerde kaydırma yine yakalayıcıda.
+            // Kartla aynı yere gitsin diye onun kayması ve eğimi bunda da var.
+            retryOverlay
+                .scaleEffect(1 - cardLift)
+                .offset(x: dragX, y: dragY)
+                .rotationEffect(.degrees(tiltDegrees))
         }
         .background {
             // Kartın ölçüsü: eşik ve eğim hesabı buna dayanıyor. Ölçüm gelmeden
@@ -471,6 +481,30 @@ struct VideoPageView: View {
             let proxyURL = rawURL.flatMap { repository.proxyURL($0)?.absoluteString } ?? rawURL
             if let proxyURL {
                 switch model.failures[proxyURL] {
+                case .linkDead, .transient, .sessionLost:
+                    // Drawn by ``retryOverlay``, above the card's pan catcher.
+                    Color.clear
+
+                case .none:
+                    if isActivePage {
+                        PlayerLayerView(player: playerManager.player(for: page.id))
+                    } else {
+                        ProgressView().tint(.white.opacity(0.35))
+                    }
+                }
+            } else {
+                ProgressView().tint(.white.opacity(0.35))
+            }
+        }
+    }
+
+    /// What a failed video offers instead, drawn above the card's pan catcher so it can be tapped.
+    @ViewBuilder
+    private var retryOverlay: some View {
+        let rawURL = currentRawURL
+        if let proxyURL = rawURL.flatMap({ repository.proxyURL($0)?.absoluteString }) ?? rawURL {
+            Group {
+                switch model.failures[proxyURL] {
                 case .linkDead:
                     // The link is dead, so trying it again would fail the same way — but the
                     // server re-signs these on request, so asking for the conversation again
@@ -494,14 +528,8 @@ struct VideoPageView: View {
                     }
 
                 case .none:
-                    if isActivePage {
-                        PlayerLayerView(player: playerManager.player(for: page.id))
-                    } else {
-                        ProgressView().tint(.white.opacity(0.35))
-                    }
+                    EmptyView()
                 }
-            } else {
-                ProgressView().tint(.white.opacity(0.35))
             }
         }
     }
