@@ -11,9 +11,9 @@ import androidx.core.content.edit
  * On those the operator can hear perfectly well where the swearing is, and this is how they say
  * so.
  *
- * Kept per conversation and media index rather than by url. The server re-signs links whenever it
- * is asked, so a url is not the same tomorrow — or after a refresh — and marks kept against one
- * would quietly detach from the video they belong to.
+ * Kept per conversation and media index rather than by url. A link refresh swaps a
+ * conversation's urls when the server has different ones, and marks kept against a url would
+ * quietly detach from the video they belong to.
  */
 class ManualMarks(private val prefs: SharedPreferences) {
 

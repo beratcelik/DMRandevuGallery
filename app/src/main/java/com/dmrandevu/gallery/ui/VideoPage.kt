@@ -532,10 +532,10 @@ fun VideoPage(
                     rawUrl == null || proxyUrl == null ->
                         CircularProgressIndicator(color = Color.White.copy(alpha = 0.35f))
 
-                    // The link is dead, so trying it again would fail the same way — but the
-                    // server re-signs these on request, so asking for the conversation again
-                    // gets one that works. That is what this retry does, unlike the transient
-                    // one below.
+                    // The link is dead, so trying it again would fail the same way. This retry
+                    // asks the server for the conversation again instead, unlike the transient
+                    // one below. That only helps when the server now holds a different link: it
+                    // keeps links as Instagram sent them and does not renew them.
                     failure == PlaybackFailure.LINK_DEAD -> PlaybackRetry(
                         message = stringResource(R.string.video_expired),
                         busy = refreshing,

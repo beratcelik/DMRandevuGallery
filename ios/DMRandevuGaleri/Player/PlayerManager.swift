@@ -5,8 +5,8 @@ enum PlaybackFailure {
     /// The session is over; the app drops back to the login screen.
     case sessionLost
 
-    /// The CDN turned the link itself down. Retrying the same link is pointless, but the server
-    /// re-signs these on request, so asking it again gets one that works.
+    /// The CDN turned the link itself down. Retrying the same link is pointless; the one other
+    /// move is asking the server whether it now holds a different one.
     case linkDead
 
     /// Says nothing about the video — a 5xx, a dropped connection, a decoder giving up. Worth
@@ -252,9 +252,9 @@ final class PlayerManager {
             // Except when the link fails before playback starts. A CDN answering 404 to the first
             // request leaves the log empty and says so only in the error: NSURLErrorDomain -1100
             // over CoreMedia's -12938. Read as "no status" that became a transient failure, whose
-            // "Tekrar dene" asks the same dead link again forever. It is the expired case, and its
-            // retry fetches a freshly signed link, which is what Android already did with the
-            // same 404.
+            // "Tekrar dene" asks the same dead link again forever. It is the expired case, whose
+            // retry asks the server for the conversation again instead, which is what Android
+            // already did with the same 404.
             let status = item.errorLog()?.events.last?.errorStatusCode
                 ?? PlaybackFailure.httpStatus(in: item.error)
             let failure = PlaybackFailure(status: status)

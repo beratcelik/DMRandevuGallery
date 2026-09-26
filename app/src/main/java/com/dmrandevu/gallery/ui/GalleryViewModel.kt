@@ -802,9 +802,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     /**
      * Düğme anahtarı: konuşma + video sırası.
      *
-     * Adres kullanılmıyor — sunucu bağlantıları istendiğinde yeniden imzalıyor,
-     * yani adres yarın aynı değil ve ona bağlanan durum videodan sessizce
-     * kopardı. elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
+     * Adres kullanılmıyor — bağlantı yenilemesi konuşmanın adreslerini
+     * değiştirebiliyor ve adrese bağlanan durum videodan sessizce kopardı.
+     * Elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
      */
     private fun ihbarKey(conversationKey: String, mediaIndex: Int) =
         "$conversationKey#$mediaIndex"
@@ -821,9 +821,10 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     /**
      * Asks the server for this conversation again, to get media links that still work.
      *
-     * Instagram hands out short-lived links and the server re-signs them on request, so an
-     * expired video is only expired until someone asks again — but retrying the dead link itself
-     * would fail forever, which is why this is a different action from [clearFailure].
+     * Instagram hands out short-lived links, and the server keeps them as Instagram sent them
+     * rather than renewing them, so this only helps when the conversation now carries a
+     * different link. Retrying the dead link itself would fail forever, which is why this is a
+     * different action from [clearFailure].
      *
      * Returns false when the conversation could not be found or the links came back unchanged;
      * the caller leaves the expiry message up rather than pretending something happened.

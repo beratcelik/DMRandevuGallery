@@ -9,7 +9,7 @@ final class GalleryViewModel {
 
     /// Proxy urls that failed to play, and what kind of failure each one hit.
     ///
-    /// The distinction matters: a dead link is worth asking the server to re-sign, while a
+    /// The distinction matters: a dead link is worth asking the server about again, while a
     /// dropped connection is worth simply trying again. Treating every failure as an expiry —
     /// which this did until the Android build was measured and this one was not — writes off
     /// perfectly good videos for the rest of the session.
@@ -638,9 +638,9 @@ final class GalleryViewModel {
 
     /// Düğme anahtarı: konuşma + video sırası.
     ///
-    /// Adres kullanılmıyor — sunucu bağlantıları istendiğinde yeniden imzalıyor,
-    /// yani adres yarın aynı değil ve ona bağlanan durum videodan sessizce
-    /// kopardı; elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
+    /// Adres kullanılmıyor — bağlantı yenilemesi konuşmanın adreslerini
+    /// değiştirebiliyor ve adrese bağlanan durum videodan sessizce kopardı;
+    /// elle küfür işaretleri de aynı sebeple aynı anahtarı kullanıyor.
     private static func ihbarKey(_ conversationKey: String, _ mediaIndex: Int) -> String {
         "\(conversationKey)#\(mediaIndex)"
     }
@@ -665,9 +665,10 @@ final class GalleryViewModel {
 
     /// Asks the server for this conversation again, to get media links that still work.
     ///
-    /// Instagram hands out short-lived links and the server re-signs them on request, so an
-    /// expired video is only expired until someone asks again — but retrying the dead link itself
-    /// would fail forever, which is why this is a different action from ``clearFailure(_:)``.
+    /// Instagram hands out short-lived links, and the server keeps them as Instagram sent them
+    /// rather than renewing them, so this only helps when the conversation now carries a
+    /// different link. Retrying the dead link itself would fail forever, which is why this is a
+    /// different action from ``clearFailure(_:)``.
     ///
     /// Returns false when the conversation could not be found or the links came back unchanged;
     /// the caller leaves the expiry message up rather than pretending something happened.
