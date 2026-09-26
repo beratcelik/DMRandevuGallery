@@ -24,6 +24,31 @@ enum PlaybackFailure {
         default: self = .transient
         }
     }
+
+    /// The HTTP status AVFoundation folded into an error, for failures that never reach the item's
+    /// error log. Walks the underlying-error chain, since the telling code is usually a layer or
+    /// two down.
+    static func httpStatus(in error: Error?) -> Int? {
+        var current = error as NSError?
+        for _ in 0..<Self.maxErrorDepth {
+            guard let error = current else { return nil }
+            switch (error.domain, error.code) {
+            case (NSURLErrorDomain, NSURLErrorFileDoesNotExist): return 404
+            case (NSURLErrorDomain, NSURLErrorNoPermissionsToReadFile): return 403
+            case (NSURLErrorDomain, NSURLErrorUserAuthenticationRequired),
+                 (NSURLErrorDomain, NSURLErrorUserCancelledAuthentication): return 401
+            // CoreMedia's own code for a 404, seen on device under the -1100 above.
+            case (NSOSStatusErrorDomain, Self.coreMediaHTTPNotFound): return 404
+            default: current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+            }
+        }
+        return nil
+    }
+
+    private static let coreMediaHTTPNotFound = -12938
+
+    /// Error chains are short; the bound is only there so a self-referencing one cannot spin.
+    private static let maxErrorDepth = 8
 }
 import Foundation
 
@@ -223,7 +248,15 @@ final class PlayerManager {
             // The HTTP status is not on the error itself; the item's own error log is the one
             // place AVFoundation writes it down, and it is what separates a dead session from a
             // CDN link that has simply expired.
+            //
+            // Except when the link fails before playback starts. A CDN answering 404 to the first
+            // request leaves the log empty and says so only in the error: NSURLErrorDomain -1100
+            // over CoreMedia's -12938. Read as "no status" that became a transient failure, whose
+            // "Tekrar dene" asks the same dead link again forever. It is the expired case, and its
+            // retry fetches a freshly signed link, which is what Android already did with the
+            // same 404.
             let status = item.errorLog()?.events.last?.errorStatusCode
+                ?? PlaybackFailure.httpStatus(in: item.error)
             let failure = PlaybackFailure(status: status)
             Task { @MainActor in self?.onError(url, failure) }
         }
