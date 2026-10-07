@@ -149,6 +149,11 @@ final class SettingsUITests: XCTestCase {
             // Durum çubuğu bölgesi: iOS'ta listeyi başa sarar, başka bir şey yapmaz.
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02)).tap()
         }
+        // Bulunamadı: ekranın o anki hâli sonuç paketine eklensin ki neden okunabilsin.
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "waiting-for-\(text)"
+        shot.lifetime = .keepAlways
+        add(shot)
         return false
     }
 
