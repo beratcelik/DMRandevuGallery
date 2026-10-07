@@ -41,7 +41,9 @@ final class LoginViewModel {
     /// proves that and produces the id the gallery needs, so it replaces a separate ping.
     func probeExistingSession() async {
         guard probing else { return }
-        guard !username.trimmingCharacters(in: .whitespaces).isEmpty else {
+        // Kullanıcı adı ya da hesap yoksa yoklayacak bir oturum da yok (ilk kurulumda ikisi de boş).
+        guard !username.trimmingCharacters(in: .whitespaces).isEmpty,
+              !igUsername.trimmingCharacters(in: .whitespaces).isEmpty else {
             probing = false
             return
         }

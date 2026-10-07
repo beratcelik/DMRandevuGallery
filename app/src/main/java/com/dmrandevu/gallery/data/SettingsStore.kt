@@ -80,7 +80,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
 
     companion object {
         const val DEFAULT_BASE_URL = "https://dmrandevu.com"
-        const val DEFAULT_IG_ACCOUNT = "trafik_cezasi"
+        // BOŞ: her kişi kendi hesabını yazıyor. Eskiden "trafik_cezasi" geliyordu ve başka hesabın
+        // kullanıcısı, yanlış hesabı fark etmeden "hesap bulunamadı" ile karşılaşıyordu.
+        const val DEFAULT_IG_ACCOUNT = ""
         const val DEFAULT_BLUR_FACES = false
         const val DEFAULT_BLUR_PLATES = false
         const val DEFAULT_FAST_PLATES = true

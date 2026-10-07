@@ -57,7 +57,8 @@ class LoginViewModel : ViewModel() {
     private fun probeExistingSession() {
         viewModelScope.launch {
             val current = _state.value
-            if (current.username.isBlank()) {
+            // Kullanıcı adı ya da hesap yoksa yoklayacak bir oturum da yok (ilk kurulumda ikisi de boş).
+            if (current.username.isBlank() || current.igUsername.isBlank()) {
                 _state.update { it.copy(probing = false) }
                 return@launch
             }

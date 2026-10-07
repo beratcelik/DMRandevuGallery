@@ -66,7 +66,10 @@ struct LoginView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("loginSubmit")
-                .disabled(model.submitting || model.username.isEmpty || model.password.isEmpty)
+                .disabled(
+                    model.submitting || model.username.isEmpty || model.password.isEmpty
+                        || model.igUsername.trimmingCharacters(in: .whitespaces).isEmpty
+                )
                 .padding(.top, 12)
             }
             .padding(24)

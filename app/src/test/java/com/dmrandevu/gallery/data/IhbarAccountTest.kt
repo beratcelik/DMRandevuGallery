@@ -1,5 +1,6 @@
 package com.dmrandevu.gallery.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,6 +79,18 @@ class IhbarAccountTest {
      */
     @Test
     fun `SettingsStore'un sakladığı biçim tanınıyor`() {
-        assertTrue(IhbarAccount.matches(SettingsStore.DEFAULT_IG_ACCOUNT))
+        // Kırpılmış, '@'siz biçim: SettingsStore'a "@trafik_cezasi " yazılınca saklanan bu.
+        assertTrue(IhbarAccount.matches(IhbarAccount.HANDLE))
+    }
+
+    /**
+     * Hesap alanı artık BOŞ geliyor (her kişi kendi hesabını yazıyor). Boş bir hesap hiçbir zaman
+     * ihbar hesabı sayılmamalı: kapı "boşsa aç" gibi bir varsayılana kayarsa, hesap yazmayan herkesin
+     * ekranında ihbar kaydırması açılırdı.
+     */
+    @Test
+    fun `boş varsayılan ihbar hesabı değil`() {
+        assertEquals("", SettingsStore.DEFAULT_IG_ACCOUNT)
+        assertFalse(IhbarAccount.matches(SettingsStore.DEFAULT_IG_ACCOUNT))
     }
 }

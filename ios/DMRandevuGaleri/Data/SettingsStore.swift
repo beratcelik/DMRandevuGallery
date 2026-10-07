@@ -4,7 +4,9 @@ import Foundation
 final class SettingsStore {
 
     static let defaultBaseURL = "https://dmrandevu.com"
-    static let defaultIGAccount = "trafik_cezasi"
+    // BOŞ: her kişi kendi hesabını yazıyor. Eskiden "trafik_cezasi" geliyordu ve başka hesabın
+    // kullanıcısı, yanlış hesabı fark etmeden "hesap bulunamadı" ile karşılaşıyordu.
+    static let defaultIGAccount = ""
 
     private let defaults: UserDefaults
 

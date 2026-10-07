@@ -3,8 +3,8 @@ import XCTest
 /// Ayarlar: dişli, şifre değiştirme, çıkış ve ikinci bir hesapla giriş.
 ///
 /// YALNIZCA YEREL BİR SAHTE SUNUCUYA KARŞI KOŞUYOR. `DMRANDEVU_MOCK_SERVER` (örn.
-/// `http://127.0.0.1:3111`) verilmezse ya da adres yerel değilse test atlanıyor, yani üretime
-/// bağlanamaz: bu test şifre değiştiriyor, çıkış yapıyor ve hesap değiştiriyor, ve gerçek bir
+/// `http://127.0.0.1:3111`, gerçek bir telefonda Mac'in yerel ağ adresi) verilmezse ya da adres
+/// yerel/özel ağ değilse test atlanıyor, yani üretime bağlanamaz: bu test şifre değiştiriyor, çıkış yapıyor ve hesap değiştiriyor, ve gerçek bir
 /// hesapta bunların hiçbiri "deneme" sayılmaz. Sahte sunucu iki hesap taşıyor (`demo_hesap` ve
 /// `demo_hesap2`, farklı müşterilerle), her giriş bilgisini kabul ediyor ve mevcut şifre olarak
 /// `demo` bekliyor. Gerçek müşteri verisi yok.
@@ -17,15 +17,28 @@ final class SettingsUITests: XCTestCase {
     private var app: XCUIApplication!
     private var server = ""
 
-    override func setUp() async throws {
+    // SENKRON setUp: asenkron olan, kesme izleyicisinin ihtiyaç duyduğu "geçerli test bağlamı"nı
+    // taşımıyor (gerçek telefonda "Current context must not be nil" ile düşüyordu).
+    override func setUpWithError() throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
         guard let configured = environment["DMRANDEVU_MOCK_SERVER"],
               let host = URL(string: configured)?.host,
-              ["127.0.0.1", "localhost"].contains(host) else {
-            throw XCTSkip("DMRANDEVU_MOCK_SERVER must point at a local stand-in server (127.0.0.1)")
+              Self.isLocalHost(host) else {
+            throw XCTSkip("DMRANDEVU_MOCK_SERVER must point at a local stand-in server (127.0.0.1 or a private LAN address)")
         }
         server = configured
+
+        // Gerçek bir telefon, yerel ağdaki bir adrese ilk bağlandığında "yerel ağı bulmasına izin ver"
+        // diye soruyor; simülatör sormuyor. Soru testi durdurmasın.
+        addUIInterruptionMonitor(withDescription: "Local network permission") { alert in
+            for label in ["Allow", "OK", "İzin Ver", "Tamam"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
+
         app = XCUIApplication()
         app.launch()
     }
@@ -36,7 +49,7 @@ final class SettingsUITests: XCTestCase {
         signIn(account: "demo_hesap")
         dismissTourIfShown()
         XCTAssertTrue(
-            customerName(containing: "ornek_musteri").waitForExistence(timeout: 30),
+            waitForCustomer(containing: "ornek_musteri"),
             "the first account's customer never appeared"
         )
 
@@ -99,7 +112,7 @@ final class SettingsUITests: XCTestCase {
         signIn(account: "demo_hesap2")
         dismissTourIfShown()
         XCTAssertTrue(
-            customerName(containing: "ikinci_hesap_musterisi").waitForExistence(timeout: 30),
+            waitForCustomer(containing: "ikinci_hesap_musterisi"),
             "the second account's customer never appeared"
         )
         XCTAssertFalse(
@@ -110,9 +123,33 @@ final class SettingsUITests: XCTestCase {
 
     // MARK: - Handles
 
+    /// Döngü geri adresi, `localhost` ya da özel (RFC 1918) bir ağ adresi. Genel bir adres asla.
+    private static func isLocalHost(_ host: String) -> Bool {
+        if host == "localhost" { return true }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        return parts[0] == 127 || parts[0] == 10
+            || (parts[0] == 192 && parts[1] == 168)
+            || (parts[0] == 172 && (16...31).contains(parts[1]))
+    }
+
     private func customerName(containing text: String) -> XCUIElement {
         app.staticTexts.matching(identifier: "customerName")
             .matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    /// Müşteri adı görünene kadar bekler. Beklerken aralıklarla zararsız bir dokunuş yapıyor: gerçek
+    /// bir telefonda çıkan "yerel ağ" izni gibi bir sistem uyarısı, kesme izleyicisine ancak bir
+    /// etkileşim sırasında ulaşıyor; yalnızca beklemek onu açık bırakıp bağlantıyı tutardı.
+    @MainActor
+    private func waitForCustomer(containing text: String, timeout: TimeInterval = 40) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if customerName(containing: text).waitForExistence(timeout: 2) { return true }
+            // Durum çubuğu bölgesi: iOS'ta listeyi başa sarar, başka bir şey yapmaz.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02)).tap()
+        }
+        return false
     }
 
     @MainActor
@@ -124,6 +161,9 @@ final class SettingsUITests: XCTestCase {
         replace(password, with: "demo")
         replace(app.textFields["loginAccount"], with: account)
         app.buttons["loginSubmit"].tap()
+        // Bir sistem uyarısı (yerel ağ izni) çıktıysa kesme izleyicisi ancak bir etkileşimde
+        // devreye giriyor; ekranın üst orta kısmına zararsız tek bir dokunuş.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
     }
 
     /// Varsa tanıtımı kapatır (kurulum başına bir kez çıkar, ve altına dokunuş geçirmez).

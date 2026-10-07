@@ -3,7 +3,8 @@ import XCTest
 /// Drives the real app the way the operator does.
 ///
 /// These need a live session on the device — the app is launched, not stubbed. Set
-/// `DMRANDEVU_USER` and `DMRANDEVU_PASS` in the runner environment to let the tests log in, or
+/// `DMRANDEVU_USER`, `DMRANDEVU_PASS` and `DMRANDEVU_ACCOUNT` (default `trafik_cezasi`; the login
+/// screen no longer pre-fills it) in the runner environment to let the tests log in, or
 /// leave the app already signed in; without either they skip rather than fail.
 ///
 /// Swiping forward past a customer queues their deletion, which is the app working as designed.
@@ -366,6 +367,10 @@ final class GalleryUITests: XCTestCase {
         username.typeText(user)
         password.tap()
         password.typeText(secret)
+        // Hesap alanı boş geliyor: hangi hesabın galerisine bakılacağı açıkça verilmeli.
+        let account = app.textFields["loginAccount"]
+        account.tap()
+        account.typeText(environment["DMRANDEVU_ACCOUNT"] ?? "trafik_cezasi")
         app.buttons["loginSubmit"].tap()
     }
 

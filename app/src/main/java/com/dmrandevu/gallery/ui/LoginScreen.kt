@@ -131,7 +131,8 @@ fun LoginScreen(
 
         Button(
             onClick = viewModel::submit,
-            enabled = !state.submitting && state.username.isNotBlank() && state.password.isNotBlank(),
+            enabled = !state.submitting && state.username.isNotBlank() && state.password.isNotBlank() &&
+                state.igUsername.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 24.dp)

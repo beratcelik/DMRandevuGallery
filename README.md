@@ -63,6 +63,10 @@ except to the server, and the app stores no password. Signing out closes the ser
 everything of the previous person (loaded conversations included), so the next sign-in, as anyone,
 starts clean. A wrong current password is shown on the form; it does not log you out.
 
+The Instagram account field on the login screen starts **empty**: each person types their own
+account, and the sign-in button stays off until it is filled. (It used to be pre-filled with
+`trafik_cezasi`, which gave everyone else a confusing "account not found".)
+
 An account can be entered as an @handle or as a numeric Instagram id. Numeric ids and a couple
 of known handles are resolved on the device, so the app still works against a server that
 predates `/admin/media-gallery-resolve`.

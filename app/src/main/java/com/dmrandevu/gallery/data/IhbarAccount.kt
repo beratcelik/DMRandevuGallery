@@ -18,7 +18,7 @@ package com.dmrandevu.gallery.data
  */
 object IhbarAccount {
 
-    /** Instagram kullanıcı adı; [SettingsStore.DEFAULT_IG_ACCOUNT] ile aynı hesap. */
+    /** Instagram kullanıcı adı. Giriş ekranındaki hesap alanı artık boş geliyor; bu hesap yazılırsa ihbar açılır. */
     const val HANDLE = "trafik_cezasi"
 
     /** Aynı hesabın sayısal Instagram kimliği; ihbar sunucusunun IG_ACCOUNT_ID'si. */
