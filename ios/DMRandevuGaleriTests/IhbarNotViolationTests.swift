@@ -191,7 +191,7 @@ final class IhbarNotViolationTests: XCTestCase {
 
         let newsworthy: [IhbarPhase] = [
             .approved, .verified, .verifiedPending, .notViolation, .needsInfo,
-            .blocked, .pending, .error, .rejectError, .noToken, .busy, .rejecting,
+            .blocked, .pending, .error, .rejectError, .busy, .rejecting,
         ]
         for phase in newsworthy {
             XCTAssertTrue(IhbarMark(phase: phase).saysSomething, "\(phase) görünmeli")

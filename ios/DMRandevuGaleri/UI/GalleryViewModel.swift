@@ -382,7 +382,7 @@ final class GalleryViewModel {
             if pendingDecisions[page.id] != nil { return false }
             switch ihbarMark(conversationKey: conversation.key, mediaIndex: index).phase {
             case .notViolation, .approved, .verified, .verifiedPending,
-                 .busy, .rejecting, .noToken:
+                 .busy, .rejecting:
                 return false
             default:
                 return true
@@ -407,12 +407,6 @@ final class GalleryViewModel {
 
         let indices = undecidedIndices(conversation)
         guard !indices.isEmpty else { return }
-        guard ihbar.hasToken else {
-            for index in indices {
-                ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .noToken)
-            }
-            return
-        }
 
         for index in indices {
             ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .rejecting)
@@ -438,10 +432,12 @@ final class GalleryViewModel {
                     ihbarMarks[Self.ihbarKey(conversation.key, index)] = answers.items[position].mark
                 }
                 toast = Strings.bulkDismissResult(answers.applied, answers.skipped)
-            } catch is IhbarTokenMissingError {
+            } catch is UnauthorizedError {
+                // Oturum bitti: işaretler "yolda" kalmasın, kullanıcı giriş ekranına dönsün.
                 for index in indices {
-                    ihbarMarks[Self.ihbarKey(conversation.key, index)] = IhbarMark(phase: .noToken)
+                    ihbarMarks.removeValue(forKey: Self.ihbarKey(conversation.key, index))
                 }
+                sessionLost = true
             } catch let error as IhbarError {
                 for index in indices {
                     ihbarMarks[Self.ihbarKey(conversation.key, index)] =
@@ -465,8 +461,7 @@ final class GalleryViewModel {
 
     /// Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan.
     func ihbarMark(conversationKey: String, mediaIndex: Int) -> IhbarMark {
-        ihbarMarks[Self.ihbarKey(conversationKey, mediaIndex)]
-            ?? IhbarMark(phase: ihbar.hasToken ? .unknown : .noToken)
+        ihbarMarks[Self.ihbarKey(conversationKey, mediaIndex)] ?? IhbarMark(phase: .unknown)
     }
 
     /// Bir sayfa dolusu videonun durumunu TEK istekte alır ve düğmeleri boyar.
@@ -479,7 +474,7 @@ final class GalleryViewModel {
         // Yanlış hesapta ağa TEK istek bile çıkmıyor. İhbar sunucusu bu hesabın
         // videolarını tanımadığı için elli öğelik sorgu yalnızca oran sınırını
         // doldurur, sonra da her düğmeye taşıyamayacağı bir hata metni yazardı.
-        guard ihbarAvailable, ihbar.hasToken else { return }
+        guard ihbarAvailable else { return }
         let targets: [(key: String, item: IhbarItem)] = conversations.filter(ihbarApplies(to:)).flatMap { conversation in
             conversation.urls.indices.map { index in
                 (
@@ -496,10 +491,13 @@ final class GalleryViewModel {
                 let answers: [IhbarStatusItem]
                 do {
                     answers = try await ihbar.status(chunk.map { $0.item })
+                } catch is UnauthorizedError {
+                    sessionLost = true
+                    return
                 } catch let error as IhbarError {
-                    // Sunucu isteği anladı ve reddetti; pratikte bu "belirteç
-                    // geçersiz" demek. Yutmak, sahibin bozuk bir belirteçle
-                    // düğmeye basıp durmasına yol açardı — sebebi düğmede yazsın.
+                    // Sunucu isteği anladı ve reddetti (İhbar'a ulaşılamadı, anahtar kurulmamış,
+                    // yetki yok). Yutmak, sahibin çalışmayan bir düğmeye basıp durmasına yol
+                    // açardı — sebebi düğmede yazsın.
                     for target in chunk {
                         ihbarMarks[target.key] = IhbarMark(phase: .error, detail: error.message)
                     }
@@ -557,10 +555,6 @@ final class GalleryViewModel {
         default:
             break
         }
-        guard ihbar.hasToken else {
-            ihbarMarks[key] = IhbarMark(phase: .noToken)
-            return
-        }
 
         ihbarMarks[key] = IhbarMark(phase: .busy)
         let item = ihbarItem(for: conversation, mediaIndex: mediaIndex)
@@ -568,8 +562,9 @@ final class GalleryViewModel {
             guard let self else { return }
             do {
                 ihbarMarks[key] = try await ihbar.approve(item).mark
-            } catch is IhbarTokenMissingError {
-                ihbarMarks[key] = IhbarMark(phase: .noToken)
+            } catch is UnauthorizedError {
+                ihbarMarks[key] = IhbarMark(phase: .error)
+                sessionLost = true
             } catch let error as IhbarError {
                 ihbarMarks[key] = IhbarMark(phase: .error, detail: error.message)
             } catch {
@@ -617,10 +612,6 @@ final class GalleryViewModel {
         default:
             break
         }
-        guard ihbar.hasToken else {
-            ihbarMarks[key] = IhbarMark(phase: .noToken)
-            return
-        }
 
         ihbarMarks[key] = IhbarMark(phase: .rejecting)
         let item = ihbarItem(for: conversation, mediaIndex: mediaIndex)
@@ -628,8 +619,9 @@ final class GalleryViewModel {
             guard let self else { return }
             do {
                 ihbarMarks[key] = try await ihbar.reject(item).mark
-            } catch is IhbarTokenMissingError {
-                ihbarMarks[key] = IhbarMark(phase: .noToken)
+            } catch is UnauthorizedError {
+                ihbarMarks[key] = IhbarMark(phase: .rejectError)
+                sessionLost = true
             } catch let error as IhbarError {
                 ihbarMarks[key] = IhbarMark(phase: .rejectError, detail: error.message)
             } catch {
@@ -637,14 +629,6 @@ final class GalleryViewModel {
                 ihbarMarks[key] = IhbarMark(phase: .rejectError)
             }
         }
-    }
-
-    /// Ayar penceresine yapıştırılan belirteci saklar ve ekranı yeniden boyar.
-    func saveIhbarToken(_ token: String) {
-        settings.ihbarToken = token
-        // Eldeki "belirteç yok" durumları artık yalan; hepsi yeniden sorulacak.
-        ihbarMarks.removeAll()
-        refreshIhbar(items)
     }
 
     /// Düğme anahtarı: konuşma + video sırası.

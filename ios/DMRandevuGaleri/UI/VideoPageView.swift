@@ -53,8 +53,6 @@ struct VideoPageView: View {
     @State private var captioning = false
     @State private var captionForURL: String?
     /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
-    @State private var ihbarTokenPrompt = false
-    @State private var ihbarTokenDraft = ""
     /// Toplu eleme onayı istenirken kaç video elenecek (nil: pencere kapalı).
     @State private var bulkDismissCount: Int?
 
@@ -260,24 +258,6 @@ struct VideoPageView: View {
                 onSessionLost: model.reportSessionLost,
                 onToast: { model.toast = $0 }
             )
-        }
-        // NEDEN GİRİŞ EKRANINDAKİ ALAN TEK BAŞINA YETMİYOR: sunucu oturumu yedi gün
-        // yaşıyor ve uygulama açık oturumla açıldığında giriş ekranı HİÇ görünmüyor.
-        // Belirteci yalnızca oraya koysaydık, sahip düğmenin neden çalışmadığını
-        // anlatan bir yazıya bakıp ona ulaşamayacağı bir alana yönlendirilirdi.
-        .alert(Strings.ihbarTokenTitle, isPresented: $ihbarTokenPrompt) {
-            TextField(Strings.ihbarTokenHint, text: $ihbarTokenDraft)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Button(Strings.ihbarTokenSave) {
-                let token = ihbarTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                ihbarTokenDraft = ""
-                // Boş kaydetmek, çalışan bir belirteci silmek demek olurdu.
-                if !token.isEmpty { model.saveIhbarToken(token) }
-            }
-            Button(Strings.cancel, role: .cancel) { ihbarTokenDraft = "" }
-        } message: {
-            Text(Strings.ihbarTokenExplain)
         }
         // Toplu eleme onayı.
         .confirmationDialog(
@@ -545,14 +525,6 @@ struct VideoPageView: View {
         )
 
         guard let verdict else { return settleBack() }
-
-        if ihbarMark.phase == .noToken {
-            // Belirteç yokken kaydırma ağa çıkmıyor; eksik olanı sormak tek
-            // makul davranış.
-            settleBack()
-            ihbarTokenPrompt = true
-            return
-        }
 
         flingAway(verdict)
     }
@@ -1008,11 +980,7 @@ struct VideoPageView: View {
         if decisionEnabled, ihbarMark.saysSomething {
             VStack {
                 HStack {
-                    IhbarStatusChip(
-                        mark: ihbarMark,
-                        onTap: { if ihbarMark.phase == .noToken { ihbarTokenPrompt = true } },
-                        onLongPress: { ihbarTokenPrompt = true }
-                    )
+                    IhbarStatusChip(mark: ihbarMark)
                     Spacer()
                 }
                 .padding(.horizontal, 16)

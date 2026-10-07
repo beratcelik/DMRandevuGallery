@@ -145,8 +145,6 @@ fun VideoPage(
     // Reels akışının caption aşamasında mıyız: yüzde bittikten sonraki uzun bekleme.
     var captioningReels by remember { mutableStateOf(false) }
     var captionForUrl by remember { mutableStateOf<String?>(null) }
-    // Belirteci yapıştırma penceresi açık mı.
-    var ihbarTokenPrompt by remember { mutableStateOf(false) }
     // Toplu eleme onayı istenirken kaç video elenecek (null: pencere kapalı).
     var bulkDismissCount by remember { mutableStateOf<Int?>(null) }
     // Percentage of the running export, or null while nothing is being processed. Only one
@@ -423,13 +421,6 @@ fun VideoPage(
                             // kartı "iptal edilmiş bir animasyon" gibi gösteriyordu;
                             // yay, elden bırakılan bir kartın masaya oturması gibi.
                             verdict == null -> scope.launch { settleBack() }
-
-                            ihbarMark.phase == IhbarPhase.NO_TOKEN -> {
-                                // Belirteç yokken kaydırma ağa çıkmıyor; eksik
-                                // olanı sormak tek makul davranış.
-                                scope.launch { settleBack() }
-                                ihbarTokenPrompt = true
-                            }
 
                             else -> {
                                 val outcome = if (verdict == SwipeDecision.REPORT) {
@@ -968,8 +959,8 @@ fun VideoPage(
         // ─── İHBAR DURUM ÇİPİ ────────────────────────────────────────────────
         //
         // SALT OKUNUR. Karar kaydırmayla veriliyor; çip yalnızca sonucu
-        // gösteriyor: bu videoya ne dedim, sunucu ne yaptı. İki istisna dokunuş
-        // kabul ediyor ve ikisi de karar değil (belirteç penceresi).
+        // gösteriyor: bu videoya ne dedim, sunucu ne yaptı. Dokunuşu yutuyor ama
+        // bir şey yapmıyor (altındaki videoyu duraklatmasın diye).
         //
         // ÜSTTE, başlığın altında: ekranın altı zaten katmanlı ve kaydırma
         // kartın TAMAMINI hareket ettiriyor — karar yüzeyiyle aynı yerde duran
@@ -979,8 +970,6 @@ fun VideoPage(
         if (swipeEnabled && ihbarMark.saysSomething) {
             IhbarStatusChip(
                 mark = ihbarMark,
-                onTap = { if (ihbarMark.phase == IhbarPhase.NO_TOKEN) ihbarTokenPrompt = true },
-                onLongPress = { ihbarTokenPrompt = true },
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 16.dp, top = 72.dp)
@@ -1336,16 +1325,6 @@ fun VideoPage(
                 TextButton(onClick = { bulkDismissCount = null }) {
                     Text(stringResource(R.string.cancel))
                 }
-            }
-        )
-    }
-
-    if (ihbarTokenPrompt) {
-        IhbarTokenDialog(
-            onDismiss = { ihbarTokenPrompt = false },
-            onSave = { token ->
-                viewModel.saveIhbarToken(token)
-                ihbarTokenPrompt = false
             }
         )
     }

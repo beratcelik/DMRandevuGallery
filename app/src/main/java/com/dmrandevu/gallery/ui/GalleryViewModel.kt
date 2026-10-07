@@ -17,7 +17,6 @@ import com.dmrandevu.gallery.data.IhbarException
 import com.dmrandevu.gallery.data.IhbarMark
 import com.dmrandevu.gallery.data.IhbarPhase
 import com.dmrandevu.gallery.data.IhbarRepository
-import com.dmrandevu.gallery.data.IhbarTokenMissingException
 import com.dmrandevu.gallery.data.UnauthorizedException
 import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.data.ihbarItemFor
@@ -63,9 +62,6 @@ private data class PendingDelete(val conversation: Conversation, val job: Job)
 
 /** Sunucuya henüz sorulmamış düğme: nötr ve basılabilir. */
 private val UNKNOWN_MARK = IhbarMark(IhbarPhase.UNKNOWN)
-
-/** Belirteç girilmemiş: soluk, ve dokununca ne yapılması gerektiğini anlatıyor. */
-private val NO_TOKEN_MARK = IhbarMark(IhbarPhase.NO_TOKEN)
 
 class GalleryViewModel(private val igId: String) : ViewModel() {
 
@@ -494,8 +490,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
             if (pendingDecisions[FeedPage(conversation.key, index).id] != null) return@filter false
             when (ihbarMark(conversation.key, index).phase) {
                 IhbarPhase.NOT_VIOLATION, IhbarPhase.APPROVED, IhbarPhase.VERIFIED,
-                IhbarPhase.VERIFIED_PENDING, IhbarPhase.BUSY, IhbarPhase.REJECTING,
-                IhbarPhase.NO_TOKEN -> false
+                IhbarPhase.VERIFIED_PENDING, IhbarPhase.BUSY, IhbarPhase.REJECTING -> false
                 else -> true
             }
         }
@@ -517,12 +512,6 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
         val indices = undecidedIndices(conversation)
         if (indices.isEmpty()) return
-        if (!ihbar.hasToken) {
-            indices.forEach { index ->
-                ihbarMarks[ihbarKey(conversation.key, index)] = NO_TOKEN_MARK
-            }
-            return
-        }
 
         indices.forEach { index ->
             ihbarMarks[ihbarKey(conversation.key, index)] = IhbarMark(IhbarPhase.REJECTING)
@@ -533,8 +522,10 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                 ihbar.rejectBulk(indices.map { ihbarItemFor(conversation, it) })
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IhbarTokenMissingException) {
-                indices.forEach { ihbarMarks[ihbarKey(conversation.key, it)] = NO_TOKEN_MARK }
+            } catch (e: UnauthorizedException) {
+                // Oturum bitti: işaretler "yolda" kalmasın, kullanıcı giriş ekranına dönsün.
+                indices.forEach { ihbarMarks.remove(ihbarKey(conversation.key, it)) }
+                _events.send(GalleryEvent.SessionLost)
                 return@launch
             } catch (e: IhbarException) {
                 indices.forEach {
@@ -628,8 +619,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
 
     /** Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan. */
     fun ihbarMark(conversationKey: String, mediaIndex: Int): IhbarMark =
-        ihbarMarks[ihbarKey(conversationKey, mediaIndex)]
-            ?: if (ihbar.hasToken) UNKNOWN_MARK else NO_TOKEN_MARK
+        ihbarMarks[ihbarKey(conversationKey, mediaIndex)] ?: UNKNOWN_MARK
 
     /**
      * Bir sayfa dolusu videonun durumunu TEK istekte alır ve düğmeleri boyar.
@@ -642,7 +632,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     private fun refreshIhbar(conversations: List<Conversation>) {
         // Yanlış hesapta tek bir istek bile atılmıyor; gerekçesi
         // [ihbarEnabled] üzerinde.
-        if (!ihbarEnabled || !ihbar.hasToken) return
+        if (!ihbarEnabled) return
         val targets = conversations.filter(::ihbarApplies).flatMap { conversation ->
             conversation.urls.indices.map { index ->
                 ihbarKey(conversation.key, index) to ihbarItemFor(conversation, index)
@@ -656,10 +646,13 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                     ihbar.status(chunk.map { it.second })
                 } catch (e: CancellationException) {
                     throw e
+                } catch (e: UnauthorizedException) {
+                    _events.send(GalleryEvent.SessionLost)
+                    return@launch
                 } catch (e: IhbarException) {
-                    // Sunucu isteği anladı ve reddetti; pratikte bu "belirteç
-                    // geçersiz" demek. Yutmak, sahibin bozuk bir belirteçle
-                    // düğmeye basıp durmasına yol açardı — sebebi düğmede yazsın.
+                    // Sunucu isteği anladı ve reddetti (İhbar'a ulaşılamadı, anahtar kurulmamış,
+                    // yetki yok). Yutmak, sahibin çalışmayan bir düğmeye basıp durmasına yol
+                    // açardı — sebebi düğmede yazsın.
                     chunk.forEach { (key, _) ->
                         ihbarMarks[key] = IhbarMark(IhbarPhase.ERROR, e.message)
                     }
@@ -716,10 +709,6 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
             viewModelScope.launch { _events.send(GalleryEvent.Toast(blocked)) }
             return
         }
-        if (!ihbar.hasToken) {
-            ihbarMarks[key] = NO_TOKEN_MARK
-            return
-        }
 
         ihbarMarks[key] = IhbarMark(IhbarPhase.BUSY)
         viewModelScope.launch {
@@ -727,8 +716,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                 ihbar.approve(ihbarItemFor(conversation, mediaIndex)).toMark()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IhbarTokenMissingException) {
-                NO_TOKEN_MARK
+            } catch (e: UnauthorizedException) {
+                _events.send(GalleryEvent.SessionLost)
+                IhbarMark(IhbarPhase.ERROR)
             } catch (e: IhbarException) {
                 IhbarMark(IhbarPhase.ERROR, e.message)
             } catch (e: Exception) {
@@ -779,10 +769,6 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
             viewModelScope.launch { _events.send(GalleryEvent.Toast(blocked)) }
             return
         }
-        if (!ihbar.hasToken) {
-            ihbarMarks[key] = NO_TOKEN_MARK
-            return
-        }
 
         ihbarMarks[key] = IhbarMark(IhbarPhase.REJECTING)
         viewModelScope.launch {
@@ -790,8 +776,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                 ihbar.reject(ihbarItemFor(conversation, mediaIndex)).toMark()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: IhbarTokenMissingException) {
-                NO_TOKEN_MARK
+            } catch (e: UnauthorizedException) {
+                _events.send(GalleryEvent.SessionLost)
+                IhbarMark(IhbarPhase.REJECT_ERROR)
             } catch (e: IhbarException) {
                 // Hata OLUMSUZ evreye yazılıyor, [IhbarPhase.ERROR]'a değil:
                 // kırmızı olumlu düğmeye düşseydi sahip tekrar denemek için
@@ -802,14 +789,6 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
                 IhbarMark(IhbarPhase.REJECT_ERROR)
             }
         }
-    }
-
-    /** Ayar penceresine yapıştırılan belirteci saklar ve ekranı yeniden boyar. */
-    fun saveIhbarToken(token: String) {
-        settings.ihbarToken = token
-        // Eldeki "belirteç yok" durumları artık yalan; hepsi yeniden sorulacak.
-        ihbarMarks.clear()
-        refreshIhbar(items.toList())
     }
 
     /**

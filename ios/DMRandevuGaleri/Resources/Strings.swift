@@ -14,8 +14,6 @@ enum Strings {
     static let loginUsername = "Kullanıcı adı"
     static let loginPassword = "Şifre"
     static let loginAccount = "Instagram hesabı"
-    static let loginIhbarServer = "İhbar sunucusu"
-    static let loginIhbarToken = "İhbar cihaz belirteci (isteğe bağlı)"
     static let loginSubmit = "Giriş Yap"
     static let loginFailed = "Giriş başarısız. Bilgileri kontrol edin."
     static let loginAccountNotFound = "Instagram hesabı bulunamadı"
@@ -94,8 +92,6 @@ enum Strings {
     static let ihbarPending = "İhbar kaydı hazır değil"
     static let ihbarError = "İşaretlenemedi — dokunup tekrar deneyin"
     static let ihbarNetworkError = "İhbar sunucusuna ulaşılamadı"
-    static let ihbarNoToken = "İhbar belirteci yok"
-    static let ihbarNoTokenDetail = "Dokunun ve cihaz belirtecini yapıştırın"
     static func ihbarMissingFields(_ fields: String) -> String { "\(fields) eksik" }
     // Olumsuz dokunuşun KENDİ metinleri — olumlu yoldan ödünç ALINMIYOR.
     // Bir süre alınıyordu; gerekçe "hangi düğmenin konuştuğunu rengiyle konumu
@@ -109,11 +105,6 @@ enum Strings {
     static let ihbarNotViolationSending = "Eleniyor…"
     static let ihbarNotViolationMarked = "İhlal değil — elendi"
     static let ihbarNotViolationError = "Elenemedi — dokunup tekrar deneyin"
-    static let ihbarTokenTitle = "İhbar cihaz belirteci"
-    static let ihbarTokenExplain =
-        "Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli."
-    static let ihbarTokenHint = "tid_…"
-    static let ihbarTokenSave = "Kaydet"
     static let cancel = "Vazgeç"
 
     // MARK: - Kaydırarak karar

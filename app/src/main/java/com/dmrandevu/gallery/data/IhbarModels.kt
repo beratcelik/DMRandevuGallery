@@ -331,9 +331,6 @@ enum class IhbarPhase {
     /** İstek başarısız. KIRMIZI, tekrar denenebilir. */
     ERROR,
 
-    /** Cihaz belirteci girilmemiş. SOLUK, ayara yönlendirir. */
-    NO_TOKEN,
-
     /** "İhlal değil" isteği yolda. Olumsuz düğmede çember döner. */
     REJECTING,
 

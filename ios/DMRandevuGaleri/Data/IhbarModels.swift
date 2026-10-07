@@ -356,9 +356,6 @@ struct IhbarError: Error {
     let message: String
 }
 
-/// Cihaz belirteci girilmemiş; ağa çıkmadan önce durduran hata.
-struct IhbarTokenMissingError: Error {}
-
 // MARK: - Durum sözlüğü
 
 /// Sunucunun döndürdüğü durum adları.
@@ -417,8 +414,6 @@ enum IhbarPhase {
     case pending
     /// İstek başarısız. KIRMIZI, tekrar denenebilir.
     case error
-    /// Cihaz belirteci girilmemiş. SOLUK, ayara yönlendirir.
-    case noToken
     // ── olumsuz dokunuşun evreleri ───────────────────────────────────────────
     //
     // NEDEN AYNI ENUM (ikinci bir "reddetme evresi" tipi değil): bir videonun

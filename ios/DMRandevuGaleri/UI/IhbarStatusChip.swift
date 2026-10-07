@@ -44,13 +44,9 @@ enum IhbarPalette {
 /// hafızası ve iki ayrı yanlış dokunuş yolu üretirdi. Çip yalnızca sonucu
 /// gösteriyor: bu videoya ne dedim, sunucu ne yaptı.
 ///
-/// İKİ İSTİSNA DOKUNUŞ KABUL EDİYOR ve ikisi de karar değil:
-///  - Belirteç yokken dokunmak, belirteci yapıştırma penceresini açıyor.
-///    Sessizce çalışmayan bir ekran yerine eksik olanı sormak tek makul
-///    davranış; kaydırmanın neden hiçbir şey yapmadığının cevabı burada.
-///  - Uzun basış her hâlde aynı pencereyi açıyor: uygulama açık oturumla
-///    başladığında giriş ekranı hiç görünmüyor ve oradaki alan aylarca
-///    erişilemez kalabiliyor.
+/// DOKUNUŞ KARAR DEĞİL, ama YUTULUYOR: çip tıklanabilir duruyor ve hiçbir şey yapmıyor, altındaki
+/// videoyu duraklatmasın diye. (Eskiden belirteç penceresini açardı; belirteç artık sunucuda,
+/// telefonda tutulmuyor.)
 ///
 /// NEDEN `Button` DEĞİL de `.onTapGesture`: devre dışı bir SwiftUI Button
 /// dokunuşu YUTMUYOR, altındaki videoya geçiriyor — yani çipe dokunmak videoyu
@@ -58,8 +54,6 @@ enum IhbarPalette {
 struct IhbarStatusChip: View {
 
     let mark: IhbarMark
-    let onTap: () -> Void
-    let onLongPress: () -> Void
 
     private var busy: Bool { mark.phase == .busy || mark.phase == .rejecting }
 
@@ -95,8 +89,7 @@ struct IhbarStatusChip: View {
         // Uzun bir sunucu cümlesi ekranın yarısını kaplamasın.
         .frame(maxWidth: 260, alignment: .leading)
         .contentShape(.rect)
-        .onTapGesture(perform: onTap)
-        .onLongPressGesture(minimumDuration: 0.5, perform: onLongPress)
+        .onTapGesture {}
         .accessibilityIdentifier("ihbarStatusChip")
     }
 
@@ -105,7 +98,7 @@ struct IhbarStatusChip: View {
         case .verified, .approved, .verifiedPending: IhbarPalette.green
         case .needsInfo, .blocked: IhbarPalette.amber
         case .error, .rejectError: IhbarPalette.red
-        case .pending, .noToken: IhbarPalette.dim
+        case .pending: IhbarPalette.dim
         // Sahibin elediği video: soğuk ve mat — "burada yapılacak bir şey yok".
         case .notViolation: IhbarPalette.slate
         case .unknown, .markable, .busy, .rejecting: IhbarPalette.neutral
@@ -118,7 +111,6 @@ struct IhbarStatusChip: View {
         case .needsInfo, .blocked: "exclamationmark.triangle.fill"
         case .error, .rejectError: "exclamationmark.circle"
         case .pending: "hourglass"
-        case .noToken: "lock.fill"
         case .notViolation: "nosign"
         // busy/rejecting bu dala hiç gelmiyor (yerinde çember dönüyor).
         case .unknown, .markable, .busy, .rejecting: "flag.fill"
@@ -143,7 +135,6 @@ struct IhbarStatusChip: View {
         case .pending: Strings.ihbarPending
         case .error: Strings.ihbarError
         case .rejectError: Strings.ihbarNotViolationError
-        case .noToken: Strings.ihbarNoToken
         case .notViolation: Strings.ihbarNotViolationMarked
         }
     }
@@ -154,7 +145,6 @@ struct IhbarStatusChip: View {
     /// şeyi söylüyor, sunucunun aynı şeyi anlatan uzun cümlesi ise ikinci satıra
     /// sığmıyor. Kalan durumlarda sunucunun kendi Türkçe metni geçiyor.
     private var detail: String? {
-        if mark.phase == .noToken { return Strings.ihbarNoTokenDetail }
         // Kayıt yolda: cümle "işaretlendi" DEMEMELİ, ihbar henüz yola çıkmadı.
         if mark.phase == .verifiedPending { return Strings.ihbarVerifiedPendingDetail }
         if !mark.blockingFields.isEmpty {

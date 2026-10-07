@@ -37,8 +37,8 @@ object ServiceLocator {
         private set
 
     /**
-     * Trafik İhbar köprüsü. Galeri deposundan ayrı: başka bir sunucu, başka bir
-     * kimlik doğrulama ve 401'in bambaşka bir anlamı (bkz. IhbarRepository).
+     * Trafik İhbar köprüsü. DMRandevu üzerinden gidiyor (giriş yapan kişinin oturumuyla); İhbar'ın
+     * belirteci sunucuda tutuluyor (bkz. IhbarRepository).
      */
     lateinit var ihbarRepository: IhbarRepository
         private set

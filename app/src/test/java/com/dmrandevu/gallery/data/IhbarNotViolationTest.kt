@@ -207,7 +207,7 @@ class IhbarNotViolationTest {
             IhbarPhase.APPROVED, IhbarPhase.VERIFIED, IhbarPhase.VERIFIED_PENDING,
             IhbarPhase.NOT_VIOLATION, IhbarPhase.NEEDS_INFO, IhbarPhase.BLOCKED,
             IhbarPhase.PENDING, IhbarPhase.ERROR, IhbarPhase.REJECT_ERROR,
-            IhbarPhase.NO_TOKEN, IhbarPhase.BUSY, IhbarPhase.REJECTING,
+            IhbarPhase.BUSY, IhbarPhase.REJECTING,
         ).forEach { phase ->
             assertEquals("$phase görünmeli", true, IhbarMark(phase).saysSomething)
         }

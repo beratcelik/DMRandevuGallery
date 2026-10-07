@@ -8,8 +8,6 @@
     <string name="login_username">Kullanıcı adı</string>
     <string name="login_password">Şifre</string>
     <string name="login_account">Instagram hesabı</string>
-    <string name="login_ihbar_server">İhbar sunucusu</string>
-    <string name="login_ihbar_token">İhbar cihaz belirteci (isteğe bağlı)</string>
     <string name="login_submit">Giriş Yap</string>
     <string name="login_failed">Giriş başarısız. Bilgileri kontrol edin.</string>
     <string name="login_account_not_found">Instagram hesabı bulunamadı</string>
@@ -85,17 +83,11 @@
     <string name="ihbar_pending">İhbar kaydı hazır değil</string>
     <string name="ihbar_error">İşaretlenemedi — dokunup tekrar deneyin</string>
     <string name="ihbar_network_error">İhbar sunucusuna ulaşılamadı</string>
-    <string name="ihbar_no_token">İhbar belirteci yok</string>
-    <string name="ihbar_no_token_detail">Dokunun ve cihaz belirtecini yapıştırın</string>
     <string name="ihbar_missing_fields">%1$s eksik</string>
     <string name="ihbar_not_violation">İhlal değil</string>
     <string name="ihbar_not_violation_sending">Eleniyor…</string>
     <string name="ihbar_not_violation_marked">İhlal değil — elendi</string>
     <string name="ihbar_not_violation_error">Elenemedi — dokunup tekrar deneyin</string>
-    <string name="ihbar_token_title">İhbar cihaz belirteci</string>
-    <string name="ihbar_token_explain">Yönetici konsolunda Cihazlar sayfasından üretilen belirteç. Bir kez yapıştırmanız yeterli.</string>
-    <string name="ihbar_token_hint">tid_…</string>
-    <string name="ihbar_token_save">Kaydet</string>
     <string name="cancel">Vazgeç</string>
 
     <!-- Kaydırarak karar: sağa at = ihbar et, sola at = ihlal değil -->
