@@ -1,9 +1,14 @@
 package com.dmrandevu.gallery.ui
 
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import android.content.ContextWrapper
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.size
@@ -57,7 +62,10 @@ private class GalleryViewModelFactory(private val igId: String) : ViewModelProvi
 fun GalleryScreen(
     igId: String,
     onSessionLost: () -> Unit,
-    viewModel: GalleryViewModel = viewModel(factory = GalleryViewModelFactory(igId))
+    // ANAHTAR HESAP: anahtarsız çağrıldığında örnek etkinliğin deposunda kalıyor ve çıkıştan sonra
+    // BAŞKA bir hesapla girildiğinde aynı örnek geri geliyordu. Kurucuya verilen igId bir daha
+    // okunmadığı için yeni kullanıcı eski hesabın galerisini yüklemeye çalışırdı.
+    viewModel: GalleryViewModel = viewModel(key = igId, factory = GalleryViewModelFactory(igId))
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -227,6 +235,25 @@ fun GalleryScreen(
                 }
             }
 
+            // ─── AYARLAR DÜĞMESİ ────────────────────────────────────────────
+            //
+            // SAYFANIN İÇİNDE DEĞİL, akışın üstünde: boş bir galeride ve "hepsini gördün"
+            // sayfasında da durmalı, yoksa videosu olmayan bir hesaptan çıkış yolu kalmazdı.
+            // Sağ üstte, sıradaki müşteri sayısının yanında (o sayı bu düğmeye yer bırakıyor).
+            IconButton(
+                onClick = { viewModel.settingsOpen = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(padding)
+                    .padding(top = 4.dp, end = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.settings),
+                    tint = Color.White.copy(alpha = 0.8f)
+                )
+            }
+
             // ─── AKIŞ TANITIMI ──────────────────────────────────────────────
             //
             // BURADA, sayfanın içinde değil: VerticalPager'ın içeriği her sayfa için
@@ -245,8 +272,35 @@ fun GalleryScreen(
                     }
                 )
             }
+
+            if (viewModel.settingsOpen) {
+                SettingsSheet(
+                    onDismiss = { viewModel.settingsOpen = false },
+                    onLoggedOut = {
+                        viewModel.settingsOpen = false
+                        // Çıkıştan sonra önceki kişiden hiçbir şey kalmasın: yüklenmiş konuşmalar,
+                        // bekleyen kararlar, işaretler. Giriş ekranının ViewModel'i de yeniden kurulur.
+                        context.findActivity()?.viewModelStore?.clear()
+                        onSessionLost()
+                    },
+                    onSessionLost = {
+                        viewModel.settingsOpen = false
+                        viewModel.reportSessionLost()
+                    }
+                )
+            }
         }
     }
+}
+
+/** Compose'un bağlamından etkinliği bulur (bağlam sarmalayıcılarla iç içe olabilir). */
+private fun Context.findActivity(): ComponentActivity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is ComponentActivity) return c
+        c = c.baseContext
+    }
+    return null
 }
 
 /**

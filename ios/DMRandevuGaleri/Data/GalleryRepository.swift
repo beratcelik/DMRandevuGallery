@@ -185,6 +185,39 @@ final class GalleryRepository {
         return cookies.cookies(for: url)
     }
 
+    /// Kişinin KENDİ şifresini değiştirir. Hangi şifrenin değiştiği oturumdan belli; istekte kullanıcı
+    /// adı yok. Sunucu "mevcut şifre yanlış"ı 400 ile söylüyor, 401 ile değil: 401 "oturumun bitti"
+    /// demek ve kişiyi giriş ekranına atardı.
+    func changePassword(current: String, new: String) async throws {
+        var request = URLRequest(url: try require(endpoint("/admin/account/password")))
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: ["currentPassword": current, "newPassword": new]
+        )
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 { throw UnauthorizedError() }
+        guard (200..<300).contains(status) else {
+            // Giriş denemeleriyle aynı hatalı-deneme bütçesi; sunucu 429'da düz metinle yanıtlıyor.
+            let reason = status == 429
+                ? "Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin."
+                : (try? decoder.decode(CaptionError.self, from: data))?.error
+            throw PasswordChangeError(message: reason ?? "Şifre değiştirilemedi (HTTP \(status)).")
+        }
+    }
+
+    /// Çıkış: sunucudaki oturumu kapatmayı DENER, her durumda yerel çerezi siler.
+    ///
+    /// Sunucuya ulaşılamasa bile çıkış yapılmış olmalı; çıkış ağın varlığına bağlı bir şey olmamalı.
+    /// Sunucu oturumu en geç yedi gün sonra kendiliğinden bitiyor.
+    func logout() async {
+        if let url = endpoint("/admin/logout") {
+            _ = try? await session.data(for: URLRequest(url: url), delegate: redirectBlocker)
+        }
+        clearSession()
+    }
+
     func clearSession() {
         cookies.clear()
     }

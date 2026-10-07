@@ -57,6 +57,12 @@ gallery of the Instagram accounts listed for them: any other account answers "no
 rest of the panel is closed. Typing another account on the login screen therefore fails as
 "account not found".
 
+The gear in the top-right corner opens **Settings**: who is signed in, change your own password,
+sign out, and the version. Changing the password needs the current one; it never leaves the phone
+except to the server, and the app stores no password. Signing out closes the server session and clears
+everything of the previous person (loaded conversations included), so the next sign-in, as anyone,
+starts clean. A wrong current password is shown on the form; it does not log you out.
+
 An account can be entered as an @handle or as a numeric Instagram id. Numeric ids and a couple
 of known handles are resolved on the device, so the app still works against a server that
 predates `/admin/media-gallery-resolve`.

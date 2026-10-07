@@ -128,6 +128,9 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * NEDEN [ihbarMarks] İLE AYNI YERDE: ilk sayfa init bloğundan yükleniyor
      * ve o akış boyamaya kalkmadan önce bu değerin okunabilir olması gerek.
      */
+    /** Ayarlar sayfası açık mı. Başlıktaki dişli açıyor; durumu burada, çünkü sayfalar yeniden kuruluyor. */
+    var settingsOpen by mutableStateOf(false)
+
     var ihbarEnabled by mutableStateOf(isIhbarAccount(igId))
         private set
 

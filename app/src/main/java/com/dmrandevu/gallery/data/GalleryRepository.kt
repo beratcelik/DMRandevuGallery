@@ -158,6 +158,51 @@ class GalleryRepository(
         }
     }
 
+    /**
+     * Kişinin KENDİ şifresini değiştirir. Hangi şifrenin değiştiği oturumdan belli; istekte kullanıcı
+     * adı yok. Sunucu "mevcut şifre yanlış"ı 400 ile söylüyor, 401 ile değil: 401 "oturumun bitti"
+     * demek ve kişiyi giriş ekranına atardı.
+     */
+    suspend fun changePassword(currentPassword: String, newPassword: String) = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply {
+            put("currentPassword", currentPassword)
+            put("newPassword", newPassword)
+        }
+        val request = Request.Builder()
+            .url("$base/admin/account/password")
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (response.code == 401) throw UnauthorizedException()
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val reason = when (response.code) {
+                    // Giriş denemeleriyle aynı hatalı-deneme bütçesi; sunucu düz metinle yanıtlıyor.
+                    429 -> "Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin."
+                    else -> runCatching { json.decodeFromString<CaptionError>(text) }.getOrNull()?.error
+                }
+                throw PasswordChangeException(reason ?: "Şifre değiştirilemedi (HTTP ${response.code}).")
+            }
+        }
+    }
+
+    /**
+     * Çıkış: sunucudaki oturumu kapatmayı DENER, her durumda yerel çerezi siler.
+     *
+     * Sunucuya ulaşılamasa bile çıkış yapılmış olmalı — çıkış, ağın varlığına bağlı bir şey
+     * olmamalı. Sunucu oturumu en geç yedi gün sonra kendiliğinden bitiyor.
+     */
+    suspend fun logout() = withContext(Dispatchers.IO) {
+        try {
+            val noRedirect = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+            noRedirect.newCall(Request.Builder().url("$base/admin/logout").build()).execute().close()
+        } catch (e: Exception) {
+            Log.w("GalleryLogout", "server logout failed, clearing locally: ${e.message}")
+        } finally {
+            clearSession()
+        }
+    }
+
     fun clearSession() = cookieJar.clear()
 
     /** Body text of a successful response; maps the server's 401 JSON onto a typed failure. */
@@ -182,6 +227,9 @@ class GalleryRepository(
 }
 
 class AccountNotFoundException : Exception("Account not found")
+
+/** Şifre değişmedi; [message] sunucunun söylediği (Türkçe) sebep, doğrudan ekrana yazılabilir. */
+class PasswordChangeException(message: String) : Exception(message)
 
 /**
  * Caption üretilemedi ve sunucu bunun nedenini söyledi. [serverMessage] doğrudan kullanıcıya

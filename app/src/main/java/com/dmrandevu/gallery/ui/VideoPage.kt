@@ -719,7 +719,9 @@ fun VideoPage(
                 Text(
                     text = remaining.toString(),
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    // Sağ üstte ayarlar düğmesi duruyor (GalleryScreen); sayı ona yer bırakıyor.
+                    modifier = Modifier.padding(end = 40.dp)
                 )
             }
         }

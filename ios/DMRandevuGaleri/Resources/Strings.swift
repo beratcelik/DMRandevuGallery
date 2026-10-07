@@ -107,6 +107,22 @@ enum Strings {
     static let ihbarNotViolationError = "Elenemedi — dokunup tekrar deneyin"
     static let cancel = "Vazgeç"
 
+    // MARK: - Ayarlar
+    static let settings = "Ayarlar"
+    static let settingsUser = "Kullanıcı"
+    static let settingsInstagram = "Instagram hesabı"
+    static let settingsVersion = "Sürüm"
+    static let settingsChangePassword = "Şifreyi değiştir"
+    static let settingsCurrentPassword = "Mevcut şifre"
+    static let settingsNewPassword = "Yeni şifre (en az 10 karakter)"
+    static let settingsRepeatPassword = "Yeni şifre (tekrar)"
+    static let settingsPasswordMismatch = "Yeni şifreler aynı değil"
+    static let settingsPasswordChanged = "Şifre değişti"
+    static let settingsPasswordFailed = "Şifre değiştirilemedi"
+    static let logout = "Çıkış yap"
+    static let settingsLogoutTitle = "Çıkış yapılsın mı?"
+    static let settingsLogoutBody = "Bu telefondaki oturum kapanır. Başka bir hesapla girebilirsin."
+
     // MARK: - Kaydırarak karar
     //
     // Android ile BİREBİR aynı metinler: aynı kararı iki telefonda iki farklı

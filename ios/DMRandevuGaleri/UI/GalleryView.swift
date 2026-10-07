@@ -22,6 +22,9 @@ struct GalleryView: View {
     @State private var showTour = ServiceLocator.settings.tourShownBuild != currentBuildTag()
     private let buildTag = currentBuildTag()
 
+    /// Ayarlar sayfası açık mı. Durumu burada, çünkü sayfalar yeniden kuruluyor.
+    @State private var showSettings = false
+
     @Environment(\.scenePhase) private var scenePhase
 
     init(igId: String, onSessionLost: @escaping () -> Void) {
@@ -46,6 +49,31 @@ struct GalleryView: View {
             ToastView(message: $model.toast)
                 .padding(.bottom, insets.bottom)
 
+            // ─── AYARLAR DÜĞMESİ ────────────────────────────────────────────
+            //
+            // SAYFANIN İÇİNDE DEĞİL, akışın üstünde: boş bir galeride ve "hepsini gördün"
+            // sayfasında da durmalı, yoksa videosu olmayan bir hesaptan çıkış yolu kalmazdı.
+            // Sağ üstte, sıradaki müşteri sayısının yanında (o sayı bu düğmeye yer bırakıyor).
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .frame(width: 44, height: 44)
+                            .contentShape(.rect)
+                    }
+                    .accessibilityLabel(Strings.settings)
+                    .accessibilityIdentifier("settingsButton")
+                }
+                .padding(.top, insets.top)
+                .padding(.trailing, 4)
+                Spacer()
+            }
+
             // ─── AKIŞ TANITIMI ──────────────────────────────────────────────
             //
             // BURADA, sayfanın içinde değil: sayfalar ForEach içinde her biri için
@@ -63,6 +91,21 @@ struct GalleryView: View {
             }
         }
         .ignoresSafeArea()
+        .sheet(isPresented: $showSettings) {
+            SettingsView(
+                onLoggedOut: {
+                    showSettings = false
+                    // Bekleyen bir silme ya da karar çıkış anında düşerse güvenli yönde kaybolur:
+                    // konuşma silinmez, ihbar gönderilmez. Oturum zaten kapalı.
+                    model.reportSessionLost()
+                },
+                onSessionLost: {
+                    showSettings = false
+                    model.reportSessionLost()
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
         .environment(\.chromeInsets, insets)
         .task {
             insets = ScreenInsets.current

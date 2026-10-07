@@ -845,6 +845,8 @@ struct VideoPageView: View {
             Text("\(model.remaining)")
                 .font(.headline)
                 .foregroundStyle(.white)
+                // Sağ üstte ayarlar düğmesi duruyor (GalleryView); sayı ona yer bırakıyor.
+                .padding(.trailing, 40)
                 .accessibilityIdentifier("remainingCount")
         }
     }

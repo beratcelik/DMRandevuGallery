@@ -88,6 +88,11 @@ struct CaptionFailedError: Error {
 /// Thrown when the server rejects the session; the UI drops back to the login screen.
 struct UnauthorizedError: Error {}
 
+/// Şifre değişmedi; `message` sunucunun söylediği (Türkçe) sebep, doğrudan ekrana yazılabilir.
+struct PasswordChangeError: Error {
+    let message: String
+}
+
 struct AccountNotFoundError: Error {}
 
 /// The stored or typed server address is not a usable URL.
