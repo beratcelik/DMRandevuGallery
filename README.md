@@ -1,4 +1,4 @@
-# DMRandevu Galeri
+# Cheto Gallery
 
 Android client for the DMRandevu media gallery: a full-screen feed of the videos customers
 sent in over Instagram DM, Facebook Messenger and WhatsApp, for triaging them into Stories and

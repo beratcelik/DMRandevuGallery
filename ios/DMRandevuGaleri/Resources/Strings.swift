@@ -5,11 +5,11 @@ import Foundation
 /// in it.
 enum Strings {
 
-    static let appName = "DMRandevu Galeri"
+    static let appName = "Cheto Gallery"
 
     // MARK: - Login
 
-    static let loginTitle = "DMRandevu Galeri"
+    static let loginTitle = "Cheto Gallery"
     static let loginServer = "Sunucu adresi"
     static let loginUsername = "Yönetici kullanıcı adı"
     static let loginPassword = "Şifre"

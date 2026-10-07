@@ -1,4 +1,4 @@
-# DMRandevu Galeri — iOS
+# Cheto Gallery — iOS
 
 The iPhone client, feature-for-feature with the Android one: the same feed of customer videos from
 Instagram, Messenger and WhatsApp, the same three export filters (faces, plates, watermark), the
