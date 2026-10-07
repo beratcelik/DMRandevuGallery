@@ -143,22 +143,11 @@ enum Strings {
     static let ihbarAlreadyDismissed = "Bu video zaten elendi"
     static let ihbarInFlight = "İstek yolda — bekleyin"
 
-    // MARK: - Toplu eleme
+    // MARK: - Kanal etiketi
 
-    static let bulkDismiss = "Tümünü ele"
     // Başlıktaki kanal etiketi; Instagram'da çizilmiyor. Marka adları, çevrilmiyor.
     static let channelFacebook = "Messenger"
     static let channelWhatsapp = "WhatsApp"
-    static let bulkDismissTitle = "Bu müşterinin videoları elensin mi?"
-    static func bulkDismissExplain(_ count: Int) -> String {
-        "\(count) video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; "
-        + "onları geri çekmek için tek tek elemeniz gerekir."
-    }
-    static let bulkDismissConfirm = "Hepsini ele"
-    static func bulkDismissResult(_ applied: Int, _ skipped: Int) -> String {
-        "\(applied) video elendi, \(skipped) atlandı"
-    }
-    static let bulkDismissFailed = "Toplu eleme başarısız — tekrar deneyin"
 
     // MARK: - Playback
 
@@ -205,7 +194,6 @@ enum Strings {
     static let tourPlateDetail = "Plakaları bulanıklaştırır. Uzun basmak hızlı ile titiz arasında geçiş yapar; köşedeki şimşek hızlı olduğunu gösterir."
     static let tourWatermarkDetail = "Videoya hesap filigranı basar. Oynatıcıda da görünür: burada ne görüyorsan dışa aktarılan da odur."
     static let tourCensorDetail = "Küfürleri bipler. Uzun basmak otomatik ile elle arasında geçiş yapar; ilk açılışta model dosyalarını indirir."
-    static let tourBulkDetail = "Bu müşterinin karar verilmemiş videolarının hepsini tek seferde eler. Yalnızca en az iki video varken çıkar."
     static let tourDownloadDetail = "Videoyu seçili filtrelerle telefona kaydeder."
     static let tourStoryDetail = "Videoyu doğrudan Instagram Hikaye düzenleyicisine verir."
     static let tourReelsDetail = "Videoyu fotoğraflara kaydeder ve caption'ı panoya kopyalar; Reels'te videoyu seçip yapıştırırsın."

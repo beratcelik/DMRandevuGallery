@@ -152,9 +152,6 @@ fun OrientationOverlay(
                 R.string.censor_audio_toggle,
                 R.string.tour_censor_detail
             )
-            if (ihbarEnabled) {
-                TourRow(Icons.Filled.Block, R.string.bulk_dismiss, R.string.tour_bulk_detail)
-            }
             TourRow(Icons.Filled.Download, R.string.download, R.string.tour_download_detail)
             TourRow(Icons.Filled.AddCircleOutline, R.string.story, R.string.tour_story_detail)
             TourRow(Icons.Filled.Theaters, R.string.reels, R.string.tour_reels_detail)

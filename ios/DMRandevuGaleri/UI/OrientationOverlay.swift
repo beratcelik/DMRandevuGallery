@@ -59,9 +59,6 @@ struct OrientationOverlay: View {
                     row("car.fill", Strings.plateBlurToggle, Strings.tourPlateDetail)
                     row("signature", Strings.watermarkToggle, Strings.tourWatermarkDetail)
                     row("speaker.wave.2.fill", Strings.censorAudioToggle, Strings.tourCensorDetail)
-                    if ihbarEnabled {
-                        row("nosign", Strings.bulkDismiss, Strings.tourBulkDetail)
-                    }
                     row("arrow.down.circle", Strings.download, Strings.tourDownloadDetail)
                     row("plus.circle", Strings.story, Strings.tourStoryDetail)
                     row("film", Strings.reels, Strings.tourReelsDetail)

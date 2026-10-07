@@ -85,25 +85,6 @@ struct DecisionQueueTests {
         #expect(ledger.latest?.page == page)
     }
 
-    @Test("bir konuşmanın bekleyen kararları toplu elemede iptal edilebiliyor")
-    func filtersByConversation() {
-        let other = Conversation(
-            salonId: "s", clientId: "b", clientName: "b",
-            urls: ["https://cdn/3.mp4"], mediaTs: [], lastMessageDate: nil
-        )
-        var ledger = DecisionLedger()
-        ledger.put(QueuedDecision(page: page, conversation: conversation, decision: .report))
-        ledger.put(
-            QueuedDecision(
-                page: FeedPage(conversationKey: other.key, mediaIndex: 0),
-                conversation: other,
-                decision: .report
-            )
-        )
-
-        #expect(ledger.of(conversationKey: conversation.key).count == 1)
-    }
-
     @Test("karar konuşması listeden kalksa da hayatta kalıyor")
     func survivesConversationRemoval() {
         // BU TESTİN KORUDUĞU ARIZA: karar uygulanırken konuşma anahtarla

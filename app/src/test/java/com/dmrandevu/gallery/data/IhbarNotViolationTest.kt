@@ -173,24 +173,6 @@ class IhbarNotViolationTest {
     }
 
     /**
-     * Toplu elemede ATLANAN öğe, işaretin rengini DEĞİŞTİRMİYOR.
-     *
-     * Onaylı bir kaydı toplu hareket atlıyor; kartı "elendi"ye boyamak, sahibe
-     * elediğini sandırıp bir daha bakmamasına yol açardı — oysa ihbar memurda
-     * duruyor.
-     */
-    @Test
-    fun `toplu elemede atlanan onaylı kayıt onaylı kalıyor`() {
-        val mark = IhbarBulkRejectItem(
-            applied = false,
-            skipped = "onayli",
-            state = "onaylandi",
-            message = "toplu elemede atlandı"
-        ).toMark()
-        assertEquals(IhbarPhase.APPROVED, mark.phase)
-    }
-
-    /**
      * KARAR VERİLMEMİŞ VİDEODA ÇİP YOK.
      *
      * Sahip videoyu yeni açtı; karar vermediği zaten kesin ve o etiket hiçbir

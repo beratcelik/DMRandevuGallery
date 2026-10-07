@@ -75,25 +75,6 @@ class IhbarRepository(private val client: OkHttpClient, private val settings: Se
             json.decodeFromString<IhbarRejectResponse>(body)
         }
 
-    /**
-     * Bir konuşmanın karar verilmemiş videolarını TEK istekte eler.
-     *
-     * Tek tek elemek N istek demek; iki yazma ucu TEK bir oran sınırı kovasını paylaşıyor
-     * (dakikada yirmi) ve yirmi birinci dokunuş reddediliyor: konuşma yarım elenmiş kalıyor ve
-     * tükenen bütçe o dakikadaki GERÇEK ihbarı da engelliyor. Toplu uçta bir istek tek hak
-     * sayılıyor. ONAYLANMIŞ KAYITLARI SUNUCU ATLIYOR: toplu bir hareket memura asla geri çekme
-     * bildirimi göndermiyor. TOPLU ONAY YOK: onay delili bir kamu birimine çıkarıyor.
-     */
-    suspend fun rejectBulk(items: List<IhbarItem>): IhbarBulkRejectResponse =
-        withContext(Dispatchers.IO) {
-            if (items.isEmpty()) return@withContext IhbarBulkRejectResponse()
-            val payload = json.encodeToString(
-                IhbarBulkRejectRequest.serializer(), IhbarBulkRejectRequest(items),
-            )
-            val body = post("/admin/ihbar/ihlal-degil-toplu", payload)
-            json.decodeFromString<IhbarBulkRejectResponse>(body)
-        }
-
     private fun post(path: String, payload: String): String {
         val request = Request.Builder()
             .url("$base$path")

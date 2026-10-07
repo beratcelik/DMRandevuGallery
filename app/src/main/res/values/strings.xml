@@ -116,17 +116,9 @@
     <string name="ihbar_verified_pending_detail">Kayıt açılınca ihbar edilecek</string>
     <string name="ihbar_media_count">%1$d videoluk ihbar</string>
 
-    <!-- Toplu eleme -->
-    <string name="bulk_dismiss">Tümünü ele</string>
     <!-- Başlıktaki kanal etiketi; Instagram'da çizilmiyor. Marka adları, çevrilmiyor. -->
     <string name="channel_facebook" translatable="false">Messenger</string>
     <string name="channel_whatsapp" translatable="false">WhatsApp</string>
-    <string name="bulk_dismiss_title">Bu müşterinin videoları elensin mi?</string>
-    <string name="bulk_dismiss_explain">%1$d video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; onları geri çekmek için tek tek elemeniz gerekir.</string>
-    <string name="bulk_dismiss_confirm">Hepsini ele</string>
-    <string name="bulk_dismiss_result">%1$d video elendi, %2$d atlandı</string>
-    <string name="bulk_dismiss_failed">Toplu eleme başarısız — tekrar deneyin</string>
-
 
     <!-- Playback -->
     <string name="playback_speed">%1$d×</string>
@@ -168,7 +160,6 @@
     <string name="tour_plate_detail">Plakaları bulanıklaştırır. Uzun basmak hızlı ile titiz arasında geçiş yapar; köşedeki şimşek hızlı olduğunu gösterir.</string>
     <string name="tour_watermark_detail">Videoya hesap filigranı basar. Oynatıcıda da görünür: burada ne görüyorsan dışa aktarılan da odur.</string>
     <string name="tour_censor_detail">Küfürleri bipler. Uzun basmak otomatik ile elle arasında geçiş yapar; ilk açılışta model dosyalarını indirir.</string>
-    <string name="tour_bulk_detail">Bu müşterinin karar verilmemiş videolarının hepsini tek seferde eler. Yalnızca en az iki video varken çıkar.</string>
     <string name="tour_download_detail">Videoyu seçili filtrelerle telefona kaydeder.</string>
     <string name="tour_story_detail">Videoyu doğrudan Instagram Hikaye düzenleyicisine verir.</string>
     <string name="tour_reels_detail">Videoyu galeriye kaydeder ve caption\'ı panoya kopyalar; Reels\'te videoyu seçip yapıştırırsın.</string>

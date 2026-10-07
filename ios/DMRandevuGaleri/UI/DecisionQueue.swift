@@ -73,11 +73,6 @@ struct DecisionLedger: Equatable {
         order.removeAll { $0 == pageID }
     }
 
-    /// Bir konuşmanın bekleyen kararları — toplu eleme bunları önce iptal ediyor.
-    func of(conversationKey: String) -> [QueuedDecision] {
-        all.filter { $0.page.conversationKey == conversationKey }
-    }
-
     mutating func clear() {
         rows.removeAll()
         order.removeAll()

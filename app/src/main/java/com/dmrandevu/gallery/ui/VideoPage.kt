@@ -145,8 +145,6 @@ fun VideoPage(
     // Reels akışının caption aşamasında mıyız: yüzde bittikten sonraki uzun bekleme.
     var captioningReels by remember { mutableStateOf(false) }
     var captionForUrl by remember { mutableStateOf<String?>(null) }
-    // Toplu eleme onayı istenirken kaç video elenecek (null: pencere kapalı).
-    var bulkDismissCount by remember { mutableStateOf<Int?>(null) }
     // Percentage of the running export, or null while nothing is being processed. Only one
     // action can run at a time, so a single holder covers all three buttons.
     var exportProgress by remember { mutableStateOf<Int?>(null) }
@@ -932,30 +930,6 @@ fun VideoPage(
                     }
                 }
             }
-            // TOPLU ELEME: bu müşterinin karar verilmemiş videoları çoksa
-            // hepsini tek istekte elemek. İki yazma ucu tek bir oran sınırı
-            // kovasını paylaşıyor (dakikada yirmi); on beş videoyu tek tek
-            // elemek o bütçenin dörtte üçünü yakar ve aynı dakikadaki
-            // GERÇEK ihbarı da engellerdi.
-            //
-            // EN AZ İKİ VİDEO ŞARTI: tek video için toplu bir hareket,
-            // kaydırmanın zaten yaptığı işi ikinci bir yüzeyden tekrar
-            // sunmak olurdu.
-            if (swipeEnabled) {
-                val undecided = viewModel.undecidedIndices(conversation)
-                if (undecided.size >= 2) {
-                    IconButton(
-                        modifier = Modifier.size(FILTER_TOGGLE),
-                        onClick = { bulkDismissCount = undecided.size }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Block,
-                            contentDescription = stringResource(R.string.bulk_dismiss),
-                            tint = Color.White.copy(alpha = 0.75f)
-                        )
-                    }
-                }
-            }
         }
 
         // ─── İHBAR DURUM ÇİPİ ────────────────────────────────────────────────
@@ -1305,31 +1279,6 @@ fun VideoPage(
         )
     }
 
-    bulkDismissCount?.let { count ->
-        AlertDialog(
-            onDismissRequest = { bulkDismissCount = null },
-            title = { Text(stringResource(R.string.bulk_dismiss_title)) },
-            text = {
-                Text(
-                    text = stringResource(R.string.bulk_dismiss_explain, count),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    bulkDismissCount = null
-                    viewModel.dismissAll(conversation)
-                }) {
-                    Text(stringResource(R.string.bulk_dismiss_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { bulkDismissCount = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
-    }
 }
 
 /** Stands in for a video that fell over for a reason that may well not happen twice. */

@@ -54,7 +54,6 @@ struct VideoPageView: View {
     @State private var captionForURL: String?
     /// Belirteci yapıştırma penceresi açık mı, ve içine yazılan metin.
     /// Toplu eleme onayı istenirken kaç video elenecek (nil: pencere kapalı).
-    @State private var bulkDismissCount: Int?
 
     /// Percentage of the running export, or nil while nothing is being processed. Only one action
     /// can run at a time, so a single holder covers all three buttons.
@@ -258,22 +257,6 @@ struct VideoPageView: View {
                 onSessionLost: model.reportSessionLost,
                 onToast: { model.toast = $0 }
             )
-        }
-        // Toplu eleme onayı.
-        .confirmationDialog(
-            Strings.bulkDismissTitle,
-            isPresented: Binding(
-                get: { bulkDismissCount != nil },
-                set: { if !$0 { bulkDismissCount = nil } }
-            ),
-            presenting: bulkDismissCount
-        ) { count in
-            Button(Strings.bulkDismissConfirm, role: .destructive) {
-                model.dismissAll(conversation)
-            }
-            Button(Strings.cancel, role: .cancel) {}
-        } message: { count in
-            Text(Strings.bulkDismissExplain(count))
         }
     }
 
@@ -802,21 +785,6 @@ struct VideoPageView: View {
                     model.toast = model.censorByHand ? Strings.censorByHand : Strings.censorAuto
                 }
                 .accessibilityIdentifier("toggleCensor")
-            }
-
-            // TOPLU ELEME: bu müşterinin karar verilmemiş videoları çoksa hepsini tek
-            // istekte elemek. İki yazma ucu tek bir oran sınırı kovasını paylaşıyor
-            // (dakikada yirmi); on beş videoyu tek tek elemek o bütçenin dörtte üçünü
-            // yakar ve aynı dakikadaki GERÇEK ihbarı da engellerdi.
-            //
-            // EN AZ İKİ VİDEO ŞARTI: tek video için toplu bir hareket, kaydırmanın
-            // zaten yaptığı işi ikinci bir yüzeyden tekrar sunmak olurdu.
-            if decisionEnabled {
-                let undecided = model.undecidedIndices(conversation)
-                if undecided.count >= 2 {
-                    toggle(icon: "nosign", on: false) { bulkDismissCount = undecided.count }
-                        .accessibilityIdentifier("bulkDismiss")
-                }
             }
 
         }

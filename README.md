@@ -15,7 +15,8 @@ The İhbar calls (status, approve, dismiss) go to the signed-in DMRandevu sessio
 `/admin/ihbar/…`, which forwards them to the Trafik İhbar server with a device token held on that
 server (`IHBAR_DEVICE_TOKEN`). The phone carries no İhbar address and no token. Every other account
 and channel keeps download, Story, Reels, caption, face and plate blur, the drifting watermark and
-the swearing filter; only the swipe, the bulk dismiss and the status chip are İhbar's.
+the swearing filter; only the swipe and the status chip are İhbar's. There is deliberately no
+"dismiss all": a video is marked "not a violation" one at a time.
 
 The horizontal axis is the decision (on the `trafik_cezasi` account only, and only for videos
 that came in over Instagram): **swipe right to report the video as a traffic violation, swipe left

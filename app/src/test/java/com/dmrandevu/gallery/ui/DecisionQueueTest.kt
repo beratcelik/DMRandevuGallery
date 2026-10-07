@@ -81,17 +81,6 @@ class DecisionQueueTest {
     }
 
     @Test
-    fun `bir konuşmanın bekleyen kararları toplu elemede iptal edilebiliyor`() {
-        val baska = Conversation(salonId = "s", clientId = "b", urls = listOf("https://cdn/3.mp4"))
-        val ledger = DecisionLedger()
-            .put(QueuedDecision(page, conversation, SwipeOutcome.REPORT))
-            .put(QueuedDecision(FeedPage(baska.key, 0), baska, SwipeOutcome.REPORT))
-
-        assertEquals(1, ledger.of(conversation.key).size)
-        assertEquals(page.id, ledger.of(conversation.key).first().page.id)
-    }
-
-    @Test
     fun `karar konuşması listeden kalksa da hayatta kalıyor`() {
         // BU TESTİN KORUDUĞU ARIZA: karar uygulanırken konuşma anahtarla
         // aransaydı — liste artık onu taşımıyor — hiçbir şey bulunamaz ve

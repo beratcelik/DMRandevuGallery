@@ -74,9 +74,5 @@ class DecisionLedger private constructor(
     fun remove(pageId: String): DecisionLedger =
         if (pageId in rows) DecisionLedger(rows - pageId) else this
 
-    /** Bir konuşmanın bekleyen kararları — toplu eleme bunları önce iptal ediyor. */
-    fun of(conversationKey: String): List<QueuedDecision> =
-        rows.values.filter { it.page.conversationKey == conversationKey }
-
     fun clear(): DecisionLedger = if (rows.isEmpty()) this else DecisionLedger()
 }

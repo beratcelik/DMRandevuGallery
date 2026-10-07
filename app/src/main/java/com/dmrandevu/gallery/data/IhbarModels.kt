@@ -187,68 +187,6 @@ data class IhbarRejectResponse(
     val message: String = ""
 )
 
-// ─── toplu eleme ─────────────────────────────────────────────────────────────
-
-/**
- * Bir konuşmanın karar verilmemiş videolarını TEK istekte eleme isteği.
- *
- * NEDEN TOPLU BİR UÇ VAR (tekil uç dururken): bir muhabir on beş video
- * gönderebiliyor ve hiçbiri ihlal olmayabilir. Tek tek elemek on beş istek
- * demek; iki yazma ucu TEK bir oran sınırı kovasını paylaşıyor (dakikada
- * yirmi) ve yirmi birinci dokunuş reddediliyor — konuşma yarım elenmiş kalıyor
- * ve ekranda bitmiş görünüyor. Toplu uç tek çağrı = tek hak sayılıyor.
- *
- * TOPLU ONAY YOK VE OLMAYACAK: eleme geri alınabilir bir karar (aynı videoyu
- * sağa atmak fikri değiştiriyor); onay ise delili bir kamu birimine çıkarıyor.
- */
-@Serializable
-data class IhbarBulkRejectRequest(val items: List<IhbarItem>)
-
-/** Toplu elemede TEK bir videonun sonucu; öğeler İSTEK SIRASIYLA dönüyor. */
-@Serializable
-data class IhbarBulkRejectItem(
-    val key: String = "",
-    /** Sahibin kararı deftere YAZILDI mı? */
-    val applied: Boolean = false,
-    /**
-     * Kaydın kendisine dokunulmadıysa sebebi: 'onayli' | 'zayif_anahtar' |
-     * 'bulunamadi' | 'zaten'. Tanınmayan bir değer, atlanmış saymaya devam
-     * ediyor — sunucu yeni bir sebep eklediğinde uygulama çökmemeli.
-     */
-    val skipped: String? = null,
-    val state: String = "",
-    val stateLabel: String = "",
-    val notViolation: Boolean = false,
-    val detached: Boolean = false,
-    val remainingMedia: Int = 0,
-    val violationCode: String? = null,
-    val message: String = ""
-)
-
-@Serializable
-data class IhbarBulkRejectResponse(
-    val items: List<IhbarBulkRejectItem> = emptyList(),
-    /** Kararı deftere yazılan video sayısı. */
-    val applied: Int = 0,
-    /** Dokunulmayan video sayısı (onaylı, tanınmayan, zayıf anahtarlı). */
-    val skipped: Int = 0
-)
-
-/** Toplu eleme sonucunun işarete çevrilmiş hâli. */
-fun IhbarBulkRejectItem.toMark(): IhbarMark = IhbarMark(
-    phase = when {
-        // ATLANAN ÖĞE İŞARETİ DEĞİŞTİRMEMELİ: onaylı kayıt onaylı kalıyor,
-        // tanınmayan video bilinmiyor kalıyor. Toplu bir hareketin, dokunmadığı
-        // bir videonun rengini değiştirmesi en sessiz yalan olurdu.
-        skipped == "onayli" -> IhbarPhase.APPROVED
-        skipped == "bulunamadi" || skipped == "zayif_anahtar" -> IhbarPhase.PENDING
-        notViolation || state == STATE_IHLAL_DEGIL -> IhbarPhase.NOT_VIOLATION
-        else -> IhbarPhase.PENDING
-    },
-    detail = message.ifBlank { stateLabel.ifBlank { null } },
-    mediaCount = if (detached) remainingMedia else 0
-)
-
 /** Sunucunun her hata gövdesi bu biçimde: { ok:false, code, error }. */
 @Serializable
 data class IhbarErrorResponse(
