@@ -139,6 +139,9 @@ enum Strings {
     // MARK: - Toplu eleme
 
     static let bulkDismiss = "Tümünü ele"
+    // Başlıktaki kanal etiketi; Instagram'da çizilmiyor. Marka adları, çevrilmiyor.
+    static let channelFacebook = "Messenger"
+    static let channelWhatsapp = "WhatsApp"
     static let bulkDismissTitle = "Bu müşterinin videoları elensin mi?"
     static func bulkDismissExplain(_ count: Int) -> String {
         "\(count) video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; "

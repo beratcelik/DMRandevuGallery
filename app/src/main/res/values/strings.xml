@@ -112,6 +112,9 @@
 
     <!-- Toplu eleme -->
     <string name="bulk_dismiss">Tümünü ele</string>
+    <!-- Başlıktaki kanal etiketi; Instagram'da çizilmiyor. Marka adları, çevrilmiyor. -->
+    <string name="channel_facebook" translatable="false">Messenger</string>
+    <string name="channel_whatsapp" translatable="false">WhatsApp</string>
     <string name="bulk_dismiss_title">Bu müşterinin videoları elensin mi?</string>
     <string name="bulk_dismiss_explain">%1$d video \"ihlal değil\" olarak işaretlenecek. Onaylanmış ihbarlar atlanır; onları geri çekmek için tek tek elemeniz gerekir.</string>
     <string name="bulk_dismiss_confirm">Hepsini ele</string>

@@ -1,20 +1,50 @@
 package com.dmrandevu.gallery.data
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+/** The inbox a conversation came in through. One account's gallery mixes all three. */
+enum class ChatChannel { INSTAGRAM, FACEBOOK, WHATSAPP }
 
 /** One customer conversation carrying at least one video, as returned by /admin/media-gallery-page. */
 @Serializable
 data class Conversation(
     val salonId: String,
     val clientId: String,
+    /**
+     * An Instagram @handle without the @ — or, on Messenger and WhatsApp, a person's name or a
+     * phone number. Show [displayName], which knows the difference.
+     */
     val clientName: String = "",
+    /**
+     * "instagram", "facebook" or "whatsapp". Servers from before WhatsApp and Messenger reached the
+     * gallery do not send it; [channel] then reads the clientId prefix, which those servers used too.
+     */
+    @SerialName("channel") val channelName: String? = null,
+    /** Opaque: always played through the server's media proxy, never fetched directly. */
     val urls: List<String> = emptyList(),
-    /** Index-aligned with [urls]: when each video arrived on Instagram. */
+    /** Index-aligned with [urls]: when each video arrived. */
     val mediaTs: List<String?> = emptyList(),
     val lastMessageDate: String? = null
 ) {
     /** Stable identity — the delete flow tracks pages by this, never by list index. */
     val key: String get() = "$salonId:$clientId"
+
+    val channel: ChatChannel
+        get() = when (channelName) {
+            "instagram" -> ChatChannel.INSTAGRAM
+            "facebook" -> ChatChannel.FACEBOOK
+            "whatsapp" -> ChatChannel.WHATSAPP
+            else -> when {
+                clientId.startsWith("fb:") -> ChatChannel.FACEBOOK
+                clientId.startsWith("wa:") -> ChatChannel.WHATSAPP
+                else -> ChatChannel.INSTAGRAM
+            }
+        }
+
+    /** The customer as the header shows them. Only Instagram has @handles. */
+    val displayName: String
+        get() = if (channel == ChatChannel.INSTAGRAM) "@$clientName" else clientName
 
     /** Send time of one video, falling back to the conversation's own last-message date. */
     fun sentAt(index: Int): String? = mediaTs.getOrNull(index) ?: lastMessageDate

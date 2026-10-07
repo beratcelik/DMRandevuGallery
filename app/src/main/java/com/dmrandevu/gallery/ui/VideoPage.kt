@@ -26,6 +26,7 @@ import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -84,6 +85,7 @@ import com.dmrandevu.gallery.R
 import com.dmrandevu.gallery.media.censor.BeepPlayer
 import com.dmrandevu.gallery.media.censor.CensorWindow
 import com.dmrandevu.gallery.ServiceLocator
+import com.dmrandevu.gallery.data.ChatChannel
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.GalleryRepository
 import com.dmrandevu.gallery.data.IhbarPhase
@@ -184,10 +186,11 @@ fun VideoPage(
     // buna bakıyor (onaylanmış kayıtta sola atış soru soruyor).
     val ihbarMark = viewModel.ihbarMark(conversation.key, page.mediaIndex)
 
-    // Kaydırma YALNIZCA ihbar hesabında bir şey yapıyor. trafykamerasi'nin
-    // videolarının ihbar sisteminde karşılığı hiç yok; orada kartı oynatmak,
-    // hiçbir şey yapmayacak bir karar vaat etmek olurdu.
-    val swipeEnabled = viewModel.ihbarEnabled
+    // Kaydırma YALNIZCA ihbar hesabında ve Instagram'dan gelen videoda bir şey
+    // yapıyor. trafykamerasi'nin videolarının, ya da Messenger/WhatsApp'tan
+    // gelen herhangi bir videonun, ihbar sisteminde karşılığı hiç yok; orada
+    // kartı oynatmak, hiçbir şey yapmayacak bir karar vaat etmek olurdu.
+    val swipeEnabled = viewModel.ihbarApplies(conversation)
 
     val blurFaces by viewModel.blurFaces.collectAsStateWithLifecycle()
     val blurPlates by viewModel.blurPlates.collectAsStateWithLifecycle()
@@ -693,13 +696,18 @@ fun VideoPage(
             // aynı kaldı — @ismailakbaba_gayrimenkul gibi uzun bir kullanıcı adı yoksa
             // tüm genişliği alıp sayıyı ekran dışına taşırdı.
             Column(modifier = Modifier.weight(1f, fill = false)) {
-                Text(
-                    text = "@${conversation.clientName}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = conversation.displayName,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Rozet adın yanında kalıyor, uzun bir ad onu ekrandan itmiyor.
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    ChannelBadge(conversation.channel)
+                }
                 // Video başına: dikey kaydırma videoyu değiştirdiğinde bu da
                 // değişiyor.
                 formatSentAt(conversation.sentAt(page.mediaIndex))?.let { sentAt ->
@@ -940,7 +948,7 @@ fun VideoPage(
             // EN AZ İKİ VİDEO ŞARTI: tek video için toplu bir hareket,
             // kaydırmanın zaten yaptığı işi ikinci bir yüzeyden tekrar
             // sunmak olurdu.
-            if (viewModel.ihbarEnabled) {
+            if (swipeEnabled) {
                 val undecided = viewModel.undecidedIndices(conversation)
                 if (undecided.size >= 2) {
                     IconButton(
@@ -968,7 +976,7 @@ fun VideoPage(
         // bir gösterge her kaydırmada parmağın altında kalırdı.
         // Çip YALNIZCA söyleyecek bir şeyi varken çiziliyor; gerekçesi
         // IhbarMark.saysSomething başlığında.
-        if (viewModel.ihbarEnabled && ihbarMark.saysSomething) {
+        if (swipeEnabled && ihbarMark.saysSomething) {
             IhbarStatusChip(
                 mark = ihbarMark,
                 onTap = { if (ihbarMark.phase == IhbarPhase.NO_TOKEN) ihbarTokenPrompt = true },
@@ -1591,4 +1599,30 @@ private fun MarkButton(
             Text(stringResource(R.string.mark_remove), color = Color.White.copy(alpha = 0.8f))
         }
     }
+}
+
+/**
+ * Messenger ya da WhatsApp'tan gelen konuşmanın başlıktaki etiketi.
+ *
+ * INSTAGRAM'DA ÇİZİLMİYOR: akışın büyük çoğunluğu Instagram ve adın başındaki
+ * @ zaten onu söylüyor. Etiket yalnızca istisnayı işaretliyor — o videoda
+ * ihbar kaydırmasının neden çalışmadığını da açıklayan şey bu.
+ */
+@Composable
+private fun ChannelBadge(channel: ChatChannel) {
+    val (label, color) = when (channel) {
+        ChatChannel.INSTAGRAM -> return
+        ChatChannel.FACEBOOK -> stringResource(R.string.channel_facebook) to Color(0xFF0084FF)
+        ChatChannel.WHATSAPP -> stringResource(R.string.channel_whatsapp) to Color(0xFF25D366)
+    }
+    Text(
+        text = label,
+        color = Color.White,
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .background(color.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }

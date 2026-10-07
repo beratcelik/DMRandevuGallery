@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dmrandevu.gallery.ServiceLocator
+import com.dmrandevu.gallery.data.ChatChannel
 import com.dmrandevu.gallery.data.Conversation
 import com.dmrandevu.gallery.data.IhbarAccount
 import com.dmrandevu.gallery.data.IhbarException
@@ -430,7 +431,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     fun decide(conversation: Conversation, mediaIndex: Int, decision: SwipeOutcome) {
         // Kapı burada da duruyor: çizimi gizlemek bir görünüm kararı, bu istek
         // ise emniyete giden bir kayıt — çağıranın dikkatine bırakılamaz.
-        if (!ihbarEnabled) return
+        if (!ihbarApplies(conversation)) return
 
         val page = FeedPage(conversation.key, mediaIndex)
         // Aynı sayfaya ikinci karar: öncekinin zamanlayıcısı iptal, yerine yenisi.
@@ -511,7 +512,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
      * kazanıyor) ve bir de boşuna çıkarım ısmarlardı.
      */
     fun dismissAll(conversation: Conversation) {
-        if (!ihbarEnabled) return
+        if (!ihbarApplies(conversation)) return
         pendingDecisions.of(conversation.key).forEach { undoDecision(it.page.id) }
 
         val indices = undecidedIndices(conversation)
@@ -613,6 +614,18 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     private fun isIhbarAccount(accountId: String): Boolean =
         IhbarAccount.matches(accountId) && IhbarAccount.matches(settings.igUsername)
 
+    /**
+     * Bu konuşmanın videoları ihbar sistemine gidebilir mi?
+     *
+     * HESAP YETMİYOR, KANAL DA INSTAGRAM OLMALI: ihbar sunucusu mesajları
+     * yalnızca Instagram'dan alıyor (webhook ve Conversations API taraması);
+     * aynı hesabın Messenger ya da WhatsApp'tan gelen videosunun orada hiçbir
+     * kaydı yok. O videoda kaydırma, onaylanacak bir şeyi olmayan bir kararı
+     * vaat ederdi ve her seferinde "bulunamadı" dönerdi.
+     */
+    fun ihbarApplies(conversation: Conversation): Boolean =
+        ihbarEnabled && conversation.channel == ChatChannel.INSTAGRAM
+
     /** Bir videonun düğmesinin bildiği her şey; hiç sorulmamışsa varsayılan. */
     fun ihbarMark(conversationKey: String, mediaIndex: Int): IhbarMark =
         ihbarMarks[ihbarKey(conversationKey, mediaIndex)]
@@ -630,7 +643,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // Yanlış hesapta tek bir istek bile atılmıyor; gerekçesi
         // [ihbarEnabled] üzerinde.
         if (!ihbarEnabled || !ihbar.hasToken) return
-        val targets = conversations.flatMap { conversation ->
+        val targets = conversations.filter(::ihbarApplies).flatMap { conversation ->
             conversation.urls.indices.map { index ->
                 ihbarKey(conversation.key, index) to ihbarItemFor(conversation, index)
             }
@@ -679,7 +692,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // Düğme bu hesapta zaten çizilmiyor. Kapı yine de burada duruyor:
         // çizimi gizlemek bir görünüm kararı, onayı göndermek ise emniyete
         // giden bir kayıt — ikincisi çağıranın dikkatine bırakılamaz.
-        if (!ihbarEnabled) return
+        if (!ihbarApplies(conversation)) return
         val key = ihbarKey(conversation.key, mediaIndex)
         val current = ihbarMark(conversation.key, mediaIndex)
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
@@ -743,7 +756,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         // Kapı olumlu dokunuştaki ile aynı ve aynı sebeple burada: çizimi
         // gizlemek bir görünüm kararı, ama bu istek bir kaydı memurdan GERİ
         // ÇEKEBİLİYOR — çağıranın dikkatine bırakılamaz.
-        if (!ihbarEnabled) return
+        if (!ihbarApplies(conversation)) return
         val key = ihbarKey(conversation.key, mediaIndex)
         val current = ihbarMark(conversation.key, mediaIndex)
         // Zaten elenmiş ya da yolda olan karar yeniden gönderilmez. Onaylanmış

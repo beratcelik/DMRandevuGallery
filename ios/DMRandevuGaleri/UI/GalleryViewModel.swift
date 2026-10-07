@@ -68,6 +68,17 @@ final class GalleryViewModel {
     /// hesabın işaretlerinin diğerinde görünmesi bu yüzden mümkün değil.
     let ihbarAvailable: Bool
 
+    /// Bu konuşmanın videoları ihbar sistemine gidebilir mi?
+    ///
+    /// HESAP YETMİYOR, KANAL DA INSTAGRAM OLMALI: ihbar sunucusu mesajları yalnızca
+    /// Instagram'dan alıyor (webhook ve Conversations API taraması); aynı hesabın
+    /// Messenger ya da WhatsApp'tan gelen videosunun orada hiçbir kaydı yok. O videoda
+    /// kaydırma, onaylanacak bir şeyi olmayan bir kararı vaat ederdi ve her seferinde
+    /// "bulunamadı" dönerdi.
+    func ihbarApplies(to conversation: Conversation) -> Bool {
+        ihbarAvailable && conversation.chatChannel == .instagram
+    }
+
     private let repository = ServiceLocator.repository!
     private let ihbar = ServiceLocator.ihbarRepository!
     private let settings = ServiceLocator.settings!
@@ -306,7 +317,7 @@ final class GalleryViewModel {
     func decide(_ conversation: Conversation, mediaIndex: Int, decision: SwipeOutcome) {
         // Kapı burada da duruyor: çizimi gizlemek bir görünüm kararı, bu istek
         // ise emniyete giden bir kayıt — çağıranın dikkatine bırakılamaz.
-        guard ihbarAvailable else { return }
+        guard ihbarApplies(to: conversation) else { return }
 
         let page = FeedPage(conversationKey: conversation.key, mediaIndex: mediaIndex)
         // Aynı sayfaya ikinci karar: öncekinin zamanlayıcısı iptal, yerine
@@ -389,7 +400,7 @@ final class GalleryViewModel {
     /// bir olumlu karar toplu elemenin üstüne yazardı (sunucuda son dokunuş
     /// kazanıyor) ve bir de boşuna çıkarım ısmarlardı.
     func dismissAll(_ conversation: Conversation) {
-        guard ihbarAvailable else { return }
+        guard ihbarApplies(to: conversation) else { return }
         for queued in pendingDecisions.of(conversationKey: conversation.key) {
             undoDecision(queued.page.id)
         }
@@ -469,7 +480,7 @@ final class GalleryViewModel {
         // videolarını tanımadığı için elli öğelik sorgu yalnızca oran sınırını
         // doldurur, sonra da her düğmeye taşıyamayacağı bir hata metni yazardı.
         guard ihbarAvailable, ihbar.hasToken else { return }
-        let targets: [(key: String, item: IhbarItem)] = conversations.flatMap { conversation in
+        let targets: [(key: String, item: IhbarItem)] = conversations.filter(ihbarApplies(to:)).flatMap { conversation in
             conversation.urls.indices.map { index in
                 (
                     key: Self.ihbarKey(conversation.key, index),
@@ -519,7 +530,7 @@ final class GalleryViewModel {
         // Düğme yanlış hesapta zaten çizilmiyor; koruma burada da duruyor çünkü
         // onay tek yönlü bir eylem — kaydı emniyet birimine giden hatta sokuyor
         // ve tek bir görünüm koşulunun doğru yazılmış olmasına bırakılamaz.
-        guard ihbarAvailable else { return }
+        guard ihbarApplies(to: conversation) else { return }
         let key = Self.ihbarKey(conversation.key, mediaIndex)
         let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
         // Yeşile dönmüş ya da yolda olan düğmeye yeniden basılmaz. İkinci basış
@@ -591,7 +602,7 @@ final class GalleryViewModel {
         // gönderiyordu. O bildirim kaldırıldı; kayıt memurun panelinden sessizce
         // düşüyor. Geriye üç saniyelik geri alma çipi kaldı ve diğer her karar
         // gibi bu da ondan geçiyor.
-        guard ihbarAvailable else { return }
+        guard ihbarApplies(to: conversation) else { return }
         let key = Self.ihbarKey(conversation.key, mediaIndex)
         let current = ihbarMark(conversationKey: conversation.key, mediaIndex: mediaIndex)
         // Zaten elenmiş ya da yolda olan bir düğmeye yeniden basılmaz. Aynı

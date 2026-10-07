@@ -1,17 +1,46 @@
 import Foundation
 
+/// The inbox a conversation came in through. One account's gallery mixes all three.
+enum ChatChannel: Equatable {
+    case instagram, facebook, whatsapp
+}
+
 /// One customer conversation carrying at least one video, as returned by /admin/media-gallery-page.
 struct Conversation: Decodable, Identifiable, Equatable {
     let salonId: String
     let clientId: String
+    /// An Instagram @handle without the @ — or, on Messenger and WhatsApp, a person's name or a
+    /// phone number. Show ``displayName``, which knows the difference.
     var clientName: String = ""
+    /// "instagram", "facebook" or "whatsapp". Optional because servers from before WhatsApp and
+    /// Messenger reached the gallery do not send it (and a synthesized Decodable would reject a
+    /// missing key even with a default); ``chatChannel`` then reads the clientId prefix.
+    var channel: String?
+    /// Opaque: always played through the server's media proxy, never fetched directly.
     var urls: [String] = []
-    /// Index-aligned with ``urls``: when each video arrived on Instagram.
+    /// Index-aligned with ``urls``: when each video arrived.
     var mediaTs: [String?] = []
     var lastMessageDate: String?
 
     /// Stable identity — the delete flow tracks pages by this, never by list index.
     var key: String { "\(salonId):\(clientId)" }
+
+    var chatChannel: ChatChannel {
+        switch channel {
+        case "instagram": return .instagram
+        case "facebook": return .facebook
+        case "whatsapp": return .whatsapp
+        default:
+            if clientId.hasPrefix("fb:") { return .facebook }
+            if clientId.hasPrefix("wa:") { return .whatsapp }
+            return .instagram
+        }
+    }
+
+    /// The customer as the header shows them. Only Instagram has @handles.
+    var displayName: String {
+        chatChannel == .instagram ? "@\(clientName)" : clientName
+    }
 
     /// SwiftUI's paging needs the same stable identity, so `id` is deliberately not a UUID.
     var id: String { key }

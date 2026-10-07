@@ -47,7 +47,13 @@ final class GalleryUITests: XCTestCase {
     func testHeaderShowsTheNameAndEveryToggle() throws {
         XCTAssertTrue(customer.exists, "no customer name")
         XCTAssertFalse(customerNameText.isEmpty, "customer name is blank")
-        XCTAssertTrue(customerNameText.hasPrefix("@"), "customer name should read as a handle: \(customerNameText)")
+        // Only Instagram names are handles. A Messenger or WhatsApp conversation carries a channel
+        // badge instead, and its name is a person's name or a phone number.
+        if onScreen("channelBadge").exists {
+            XCTAssertFalse(customerNameText.hasPrefix("@"), "a Messenger/WhatsApp name read as a handle: \(customerNameText)")
+        } else {
+            XCTAssertTrue(customerNameText.hasPrefix("@"), "customer name should read as a handle: \(customerNameText)")
+        }
 
         for identifier in ["toggleFaces", "togglePlates", "toggleWatermark"] {
             let toggle = onScreen(identifier)

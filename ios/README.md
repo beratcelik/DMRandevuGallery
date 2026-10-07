@@ -1,8 +1,10 @@
 # DMRandevu Galeri — iOS
 
-The iPhone client, feature-for-feature with the Android one: the same feed of customer videos, the
-same three export filters (faces, plates, watermark), the same playback controls, and the same
-rule that nothing leaves the app unprotected once a filter is on.
+The iPhone client, feature-for-feature with the Android one: the same feed of customer videos from
+Instagram, Messenger and WhatsApp, the same three export filters (faces, plates, watermark), the
+same playback controls, and the same rule that nothing leaves the app unprotected once a filter is
+on. Channels, and why the İhbar swipe works on Instagram videos only, are described in the
+top-level README.
 
 ```
 open ios/DMRandevuGaleri.xcodeproj

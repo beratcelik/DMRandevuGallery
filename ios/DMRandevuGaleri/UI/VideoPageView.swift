@@ -374,7 +374,7 @@ struct VideoPageView: View {
                 .rotationEffect(.degrees(tiltDegrees))
 
             CardPanCatcher(
-                enabled: model.ihbarAvailable && !flying,
+                enabled: decisionEnabled && !flying,
                 onBegan: { location in
                     grabbedAbove = location.y < cardHeight / 2
                 },
@@ -396,7 +396,7 @@ struct VideoPageView: View {
                     settleCard(translation: translation, velocity: velocity)
                 }
             )
-            .allowsHitTesting(model.ihbarAvailable && !flying)
+            .allowsHitTesting(decisionEnabled && !flying)
 
             // ÜSTTE, KARTIN İÇİNDE DEĞİL. Yakalayıcı kartın tamamını kaplayan bir UIKit
             // görünümü ve ihbar açıkken dokunuşu o alıyor: "Tekrar dene" altında kalınca
@@ -448,7 +448,7 @@ struct VideoPageView: View {
     /// yani sahip kararının ne olacağını, kararı verdikten sonra öğrenirdi.
     @ViewBuilder
     private var stampOverlay: some View {
-        if model.ihbarAvailable, cardWidth > 0, abs(dragX) > Self.stampAppears {
+        if decisionEnabled, cardWidth > 0, abs(dragX) > Self.stampAppears {
             let report = dragX > 0
             HStack {
                 if report {
@@ -669,6 +669,12 @@ struct VideoPageView: View {
         }
     }
 
+    /// Kaydırmayla karar YALNIZCA ihbar hesabında ve Instagram'dan gelen videoda bir şey
+    /// yapıyor. trafykamerasi'nin videolarının, ya da Messenger/WhatsApp'tan gelen herhangi
+    /// bir videonun, ihbar sisteminde karşılığı hiç yok; orada kartı oynatmak, hiçbir şey
+    /// yapmayacak bir karar vaat etmek olurdu.
+    private var decisionEnabled: Bool { model.ihbarApplies(to: conversation) }
+
     private var header: some View {
         VStack {
             HStack(alignment: .center, spacing: 8) {
@@ -676,12 +682,18 @@ struct VideoPageView: View {
                     // Uzun bir kullanıcı adı, yanındakini satırdan itiyor. Filtreler sağ
                     // raya indikten sonra itilecek tek şey sıradaki müşteri sayısı kaldı,
                     // ama kural aynı: yol veren isim, ve elipsle bunu söylüyor.
-                    Text("@\(conversation.clientName)")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .accessibilityIdentifier("customerName")
+                    HStack(spacing: 8) {
+                        Text(conversation.displayName)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .accessibilityIdentifier("customerName")
+                        // Rozet adın yanında kalıyor; uzun bir ad onu itmesin diye
+                        // sıkışmaya karşı direnen o.
+                        ChannelBadge(channel: conversation.chatChannel)
+                            .layoutPriority(1)
+                    }
                     // Per-video, so it follows horizontal swipes within the conversation.
                     if let sentAt = formatSentAt(conversation.sentAt(currentIndex)) {
                         Text(sentAt)
@@ -827,7 +839,7 @@ struct VideoPageView: View {
             //
             // EN AZ İKİ VİDEO ŞARTI: tek video için toplu bir hareket, kaydırmanın
             // zaten yaptığı işi ikinci bir yüzeyden tekrar sunmak olurdu.
-            if model.ihbarAvailable {
+            if decisionEnabled {
                 let undecided = model.undecidedIndices(conversation)
                 if undecided.count >= 2 {
                     toggle(icon: "nosign", on: false) { bulkDismissCount = undecided.count }
@@ -993,7 +1005,7 @@ struct VideoPageView: View {
     private var ihbarChip: some View {
         // Çip YALNIZCA söyleyecek bir şeyi varken çiziliyor; gerekçesi
         // IhbarMark.saysSomething başlığında.
-        if model.ihbarAvailable, ihbarMark.saysSomething {
+        if decisionEnabled, ihbarMark.saysSomething {
             VStack {
                 HStack {
                     IhbarStatusChip(
@@ -1458,6 +1470,36 @@ private struct MarkButton: View {
                 Text(Strings.markRemove).foregroundStyle(.white.opacity(0.8))
             }
             .accessibilityIdentifier("markRemove")
+        }
+    }
+}
+
+/// Messenger ya da WhatsApp'tan gelen konuşmanın başlıktaki etiketi.
+///
+/// INSTAGRAM'DA ÇİZİLMİYOR: akışın büyük çoğunluğu Instagram ve adın başındaki @ zaten onu
+/// söylüyor. Etiket yalnızca istisnayı işaretliyor — o videoda ihbar kaydırmasının neden
+/// çalışmadığını da açıklayan şey bu.
+private struct ChannelBadge: View {
+    let channel: ChatChannel
+
+    var body: some View {
+        if let (label, color) = style {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(color.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+                .accessibilityIdentifier("channelBadge")
+        }
+    }
+
+    private var style: (String, Color)? {
+        switch channel {
+        case .instagram: return nil
+        case .facebook: return (Strings.channelFacebook, Color(red: 0, green: 0x84 / 255, blue: 1))
+        case .whatsapp: return (Strings.channelWhatsapp, Color(red: 0x25 / 255, green: 0xD3 / 255, blue: 0x66 / 255))
         }
     }
 }

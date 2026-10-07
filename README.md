@@ -1,16 +1,20 @@
 # DMRandevu Galeri
 
 Android client for the DMRandevu media gallery: a full-screen feed of the videos customers
-sent in over Instagram DM, for triaging them into Stories and Reels.
+sent in over Instagram DM, Facebook Messenger and WhatsApp, for triaging them into Stories and
+Reels. One account's feed mixes all three; a Messenger or WhatsApp conversation is marked with a
+small label beside the name, and only Instagram names carry an @.
 
 One flat vertical feed: every page is a video. Swiping up moves to the next video and, past a
 customer's last one, to the next customer. There is no delete button — **moving forward past a
 customer deletes the one you left**, after a five-second grace period in which swiping back
-cancels it. Deleting only clears the conversation from the server's Redis; the Instagram DM and
-its media are untouched.
+cancels it. Deleting only clears the conversation from the server's Redis; the DM itself and
+its media are untouched, on whichever app it arrived.
 
-The horizontal axis is the decision (on the `trafik_cezasi` account only): **swipe right to
-report the video as a traffic violation, swipe left to dismiss it**. The request is held for
+The horizontal axis is the decision (on the `trafik_cezasi` account only, and only for videos
+that came in over Instagram): **swipe right to report the video as a traffic violation, swipe left
+to dismiss it**. The İhbar server ingests Instagram alone, so a Messenger or WhatsApp video has no
+record there to approve; on those the card does not move. The request is held for
 three seconds behind an undo chip, and swiping back onto the page cancels it too. Dismissing a
 video that belongs to a multi-video report removes only that video; the report stays up with the
 rest of its evidence. Dismissing one that was already approved retracts it from the officers it
@@ -29,8 +33,17 @@ credentials against `POST /admin/auth/login` and then uses `/admin/media-gallery
 `/admin/media-gallery-resolve`, `/admin/media-proxy`, `/admin/generate-caption` and
 `DELETE /admin/conversation/:salonId/:clientId`.
 
-Videos are never fetched from Instagram's CDN directly; they stream through the server's
+Videos are never fetched from Meta's CDNs directly; they stream through the server's
 media proxy, which is what carries the session cookie and handles range requests.
+
+The app treats every video address as opaque and hands it to the proxy as it came. Instagram and
+Messenger addresses are CDN urls. A WhatsApp video has none — the webhook delivers a media id whose
+download needs the business's token — so the server names it `wa-media://{salonId}/{mediaId}` and
+the proxy resolves it through Graph on each request. Meta keeps an inbound media id downloadable
+for **7 days**, so a WhatsApp video older than that is not in the feed at all (an Instagram link
+can die sooner; that still shows as an expired link). Each item's `channel`
+(`instagram` / `facebook` / `whatsapp`) decides the header and the decision axis; against a server
+too old to send it, the app reads the `fb:` / `wa:` prefix of the client id instead.
 
 An account can be entered as an @handle or as a numeric Instagram id. Numeric ids and a couple
 of known handles are resolved on the device, so the app still works against a server that
