@@ -11,6 +11,12 @@ customer deletes the one you left**, after a five-second grace period in which s
 cancels it. Deleting only clears the conversation from the server's Redis; the DM itself and
 its media are untouched, on whichever app it arrived.
 
+The İhbar calls (status, approve, dismiss) go to the signed-in DMRandevu session at
+`/admin/ihbar/…`, which forwards them to the Trafik İhbar server with a device token held on that
+server (`IHBAR_DEVICE_TOKEN`). The phone carries no İhbar address and no token. Every other account
+and channel keeps download, Story, Reels, caption, face and plate blur, the drifting watermark and
+the swearing filter; only the swipe, the bulk dismiss and the status chip are İhbar's.
+
 The horizontal axis is the decision (on the `trafik_cezasi` account only, and only for videos
 that came in over Instagram): **swipe right to report the video as a traffic violation, swipe left
 to dismiss it**. The İhbar server ingests Instagram alone, so a Messenger or WhatsApp video has no
