@@ -102,6 +102,8 @@ struct SettingsView: View {
                     }
                 }
             }
+            // Kaydırınca klavye kapanıyor; altta duran düğmelere her zaman erişilebilsin.
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(Strings.settings)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -128,6 +130,11 @@ struct SettingsView: View {
     }
 
     private func submit() {
+        // Klavye kapanıyor: açık kalırsa altındaki "Çıkış yap" düğmesine dokunulamıyordu (şifre
+        // alanları kalktığı hâlde klavye yerinde kalıyor).
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+        )
         busy = true
         message = nil
         Task {

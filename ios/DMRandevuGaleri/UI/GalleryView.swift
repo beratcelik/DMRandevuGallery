@@ -104,7 +104,8 @@ struct GalleryView: View {
                     model.reportSessionLost()
                 }
             )
-            .presentationDetents([.medium, .large])
+            // Tam yükseklik: yarım yükseklikte şifre alanları klavyeyle birlikte ekrana sığmıyor.
+            .presentationDetents([.large])
         }
         .environment(\.chromeInsets, insets)
         .task {
