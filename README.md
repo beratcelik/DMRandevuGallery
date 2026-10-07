@@ -45,6 +45,12 @@ can die sooner; that still shows as an expired link). Each item's `channel`
 (`instagram` / `facebook` / `whatsapp`) decides the header and the decision axis; against a server
 too old to send it, the app reads the `fb:` / `wa:` prefix of the client id instead.
 
+Everyone signs in with their own username and password, created by the super admin on the
+server's `/admin/admins` page. A **gallery user** (the default there) reaches only the media
+gallery of the Instagram accounts listed for them: any other account answers "not found", and the
+rest of the panel is closed. Typing another account on the login screen therefore fails as
+"account not found".
+
 An account can be entered as an @handle or as a numeric Instagram id. Numeric ids and a couple
 of known handles are resolved on the device, so the app still works against a server that
 predates `/admin/media-gallery-resolve`.
