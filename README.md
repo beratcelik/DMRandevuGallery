@@ -59,6 +59,20 @@ the one Android Studio ships on macOS — change it for other machines.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Release build (Google Play)
+
+Package `ai.cheto.gallery`. The release is signed with an **upload key that is not in the
+repository**: Gradle reads `~/.cheto-signing/keystore.properties` (keystore path, alias and
+passwords) and, without that file, simply builds the release unsigned. Back that folder up — with
+Play App Signing a lost upload key can be reset through Play support, but it is a detour.
+
+```sh
+./gradlew :app:bundleRelease     # app/build/outputs/bundle/release/app-release.aab
+```
+
+Raise `versionCode` in `app/build.gradle.kts` for every upload; Play refuses a repeat. Store
+texts and graphics, and the Console checklist, are in `store/android/`.
+
 To point the app at a server running on the development machine, forward the port over USB and
 use `http://127.0.0.1:<port>` as the server address:
 

@@ -5,7 +5,7 @@
     <!-- Login -->
     <string name="login_title">Cheto Gallery</string>
     <string name="login_server">Sunucu adresi</string>
-    <string name="login_username">Yönetici kullanıcı adı</string>
+    <string name="login_username">Kullanıcı adı</string>
     <string name="login_password">Şifre</string>
     <string name="login_account">Instagram hesabı</string>
     <string name="login_ihbar_server">İhbar sunucusu</string>

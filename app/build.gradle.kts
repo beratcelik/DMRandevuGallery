@@ -1,8 +1,20 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// Release signing lives OUTSIDE the repository: ~/.cheto-signing/keystore.properties points at the
+// upload key and carries its passwords. Without that file (a fresh clone, CI that has no key) the
+// release build is simply left unsigned, and debug builds are unaffected.
+val signingProps = Properties()
+val signingFile = File(System.getProperty("user.home"), ".cheto-signing/keystore.properties")
+if (signingFile.isFile) signingFile.inputStream().use { signingProps.load(it) }
+val uploadKeyFile: File? =
+    signingProps.getProperty("storeFile")?.let { File(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "com.dmrandevu.gallery"
@@ -13,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.dmrandevu.gallery"
+        applicationId = "ai.cheto.gallery"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
@@ -28,10 +40,22 @@ android {
         }
     }
 
+    signingConfigs {
+        if (uploadKeyFile != null) {
+            create("upload") {
+                storeFile = uploadKeyFile
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (uploadKeyFile != null) signingConfig = signingConfigs.getByName("upload")
         }
     }
 

@@ -11,7 +11,7 @@ enum Strings {
 
     static let loginTitle = "Cheto Gallery"
     static let loginServer = "Sunucu adresi"
-    static let loginUsername = "Yönetici kullanıcı adı"
+    static let loginUsername = "Kullanıcı adı"
     static let loginPassword = "Şifre"
     static let loginAccount = "Instagram hesabı"
     static let loginIhbarServer = "İhbar sunucusu"

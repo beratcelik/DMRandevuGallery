@@ -1,12 +1,17 @@
+<!-- Cheto Gallery: a speech bubble (a DM) with a play triangle cut out of it. The triangle is a
+     real hole (even-odd), so it shows the blue background on the normal icon and is transparent
+     in the single-colour themed icon, where this same drawable is the monochrome layer.
+     Same geometry as the flat PNGs; the whole mark sits inside the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FFE1306C"
-        android:pathData="M44,36 L74,54 L44,72 Z" />
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M40,30 H68 A10,10 0 0 1 78,40 V58 A10,10 0 0 1 68,68 H40 A10,10 0 0 1 30,58 V40 A10,10 0 0 1 40,30 Z M49,40 L49,58 L65,49 Z" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M34,34 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+        android:pathData="M38,66 L34,79 L52,67 Z" />
 </vector>
