@@ -264,6 +264,7 @@ private fun titleOf(phase: IhbarPhase): Int = when (phase) {
     IhbarPhase.APPROVED -> R.string.ihbar_approved
     IhbarPhase.NEEDS_INFO -> R.string.ihbar_needs_info
     IhbarPhase.BLOCKED -> R.string.ihbar_blocked
+    // Bu da çizilmiyor (bkz. IhbarMark.saysSomething); dal yalnızca when tam olsun diye.
     IhbarPhase.PENDING -> R.string.ihbar_pending
     IhbarPhase.ERROR -> R.string.ihbar_error
     IhbarPhase.REJECT_ERROR -> R.string.ihbar_not_violation_error

@@ -132,6 +132,7 @@ struct IhbarStatusChip: View {
         case .approved: Strings.ihbarApproved
         case .needsInfo: Strings.ihbarNeedsInfo
         case .blocked: Strings.ihbarBlocked
+        // Bu da çizilmiyor (bkz. IhbarMark.saysSomething); dal yalnızca switch tam olsun diye.
         case .pending: Strings.ihbarPending
         case .error: Strings.ihbarError
         case .rejectError: Strings.ihbarNotViolationError

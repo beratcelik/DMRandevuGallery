@@ -374,8 +374,17 @@ extension IhbarMark {
     /// kaydırmanın kendisi öğretiyor (kart parmakla hareket ediyor ve damga
     /// beliriyor), ve boş bir ekran "bu videoya henüz dokunulmadı" demenin en
     /// kısa yolu.
+    ///
+    /// ─── NEDEN "KAYIT HAZIR DEĞİL" DE YAZMIYORUZ ───────────────────────────
+    /// `.pending`, ihbar sisteminin videoyu henüz tanımadığı ya da çıkarımın
+    /// sürdüğü hâl ("İhbar kaydı hazır değil — Çıkarım sürüyor"). Sahibin bu
+    /// haberle yapabileceği bir şey yok: kaydırma yine çalışıyor ve çıkarımı
+    /// süren kayda sağa atış yeşil `.verifiedPending` olarak görünüyor. Kayıt
+    /// hiç yokken verilen bir kararın yanıtı da buraya düşüyor; çipsiz kalması
+    /// doğru, çünkü sunucuda kaydedilen bir şey yok ve kaydırma
+    /// tekrarlanabiliyor. Etiket yalnızca yer kaplıyordu; sahibin isteğiyle gizli.
     var saysSomething: Bool {
-        phase != .unknown && phase != .markable
+        phase != .unknown && phase != .markable && phase != .pending
     }
 }
 

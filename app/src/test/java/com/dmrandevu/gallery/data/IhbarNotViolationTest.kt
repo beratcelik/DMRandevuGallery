@@ -183,12 +183,15 @@ class IhbarNotViolationTest {
     fun `çip yalnızca söyleyecek bir şey varken görünüyor`() {
         assertEquals(false, IhbarMark(IhbarPhase.UNKNOWN).saysSomething)
         assertEquals(false, IhbarMark(IhbarPhase.MARKABLE).saysSomething)
+        // "İhbar kaydı hazır değil — Çıkarım sürüyor": sahibin isteğiyle gizli.
+        assertEquals(false, IhbarMark(IhbarPhase.PENDING, "Çıkarım sürüyor").saysSomething)
 
-        // Haber taşıyan her evre görünmeye devam ediyor.
+        // Haber taşıyan her evre görünmeye devam ediyor — VERIFIED_PENDING
+        // dahil: sağa atılmış ama kaydı açılmamış video yeşil kalmalı.
         listOf(
             IhbarPhase.APPROVED, IhbarPhase.VERIFIED, IhbarPhase.VERIFIED_PENDING,
             IhbarPhase.NOT_VIOLATION, IhbarPhase.NEEDS_INFO, IhbarPhase.BLOCKED,
-            IhbarPhase.PENDING, IhbarPhase.ERROR, IhbarPhase.REJECT_ERROR,
+            IhbarPhase.ERROR, IhbarPhase.REJECT_ERROR,
             IhbarPhase.BUSY, IhbarPhase.REJECTING,
         ).forEach { phase ->
             assertEquals("$phase görünmeli", true, IhbarMark(phase).saysSomething)

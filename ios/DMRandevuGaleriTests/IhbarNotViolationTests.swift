@@ -188,10 +188,13 @@ final class IhbarNotViolationTests: XCTestCase {
     func testChipOnlyShowsWhenItHasSomethingToSay() {
         XCTAssertFalse(IhbarMark(phase: .unknown).saysSomething)
         XCTAssertFalse(IhbarMark(phase: .markable).saysSomething)
+        // "İhbar kaydı hazır değil — Çıkarım sürüyor": sahibin isteğiyle gizli.
+        XCTAssertFalse(IhbarMark(phase: .pending, detail: "Çıkarım sürüyor").saysSomething)
 
+        // .verifiedPending dahil: sağa atılmış ama kaydı açılmamış video yeşil kalmalı.
         let newsworthy: [IhbarPhase] = [
             .approved, .verified, .verifiedPending, .notViolation, .needsInfo,
-            .blocked, .pending, .error, .rejectError, .busy, .rejecting,
+            .blocked, .error, .rejectError, .busy, .rejecting,
         ]
         for phase in newsworthy {
             XCTAssertTrue(IhbarMark(phase: phase).saysSomething, "\(phase) görünmeli")

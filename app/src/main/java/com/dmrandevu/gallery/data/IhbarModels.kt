@@ -331,9 +331,19 @@ data class IhbarMark(
  * kaydırmanın kendisi öğretiyor (kart parmakla hareket ediyor ve damga
  * beliriyor), ve boş bir ekran "bu videoya henüz dokunulmadı" demenin en kısa
  * yolu.
+ *
+ * ─── NEDEN "KAYIT HAZIR DEĞİL" DE YAZMIYORUZ ──────────────────────────────
+ * [IhbarPhase.PENDING], ihbar sisteminin videoyu henüz tanımadığı ya da
+ * çıkarımın sürdüğü hâl ("İhbar kaydı hazır değil — Çıkarım sürüyor"). Sahibin
+ * bu haberle yapabileceği bir şey yok: kaydırma yine çalışıyor ve çıkarımı
+ * süren kayda sağa atış yeşil [IhbarPhase.VERIFIED_PENDING] olarak görünüyor.
+ * Kayıt hiç yokken verilen bir kararın yanıtı da buraya düşüyor; çipsiz
+ * kalması doğru, çünkü sunucuda kaydedilen bir şey yok ve kaydırma
+ * tekrarlanabiliyor. Etiket yalnızca yer kaplıyordu; sahibin isteğiyle gizli.
  */
 val IhbarMark.saysSomething: Boolean
-    get() = phase != IhbarPhase.UNKNOWN && phase != IhbarPhase.MARKABLE
+    get() = phase != IhbarPhase.UNKNOWN && phase != IhbarPhase.MARKABLE &&
+        phase != IhbarPhase.PENDING
 
 private fun phaseOf(state: String, humanVerified: Boolean, notViolation: Boolean): IhbarPhase {
     // OLUMSUZ DOKUNUŞ HER ŞEYİN ÖNÜNDE. Sahip "ihlal değil" dedikten sonra
