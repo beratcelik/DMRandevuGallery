@@ -18,8 +18,47 @@ struct CaptionSheetView: View {
     @State private var sharing = false
     @State private var shareProgress: Int?
     @State private var shareFile: URL?
+    // "Kopyalandı" görünürken true; iki saniye sonra düğme eski hâline dönüyor.
+    @State private var justCopied = false
 
     private let repository = ServiceLocator.repository!
+
+    /// Caption'ın hemen altındaki büyük "Kopyala" düğmesi.
+    ///
+    /// NEDEN BÜYÜK VE NEDEN BURADA: iPhone'da caption Instagram'a kendiliğinden ulaşmıyor —
+    /// devirle birlikte panoya konan metin Reels'te çoğu zaman yapıştırılamıyor ve devirden
+    /// sonraki yedek yazma arka planda iOS tarafından reddediliyor. Operatör bu yüzden HER
+    /// paylaşımda buraya dönüp kopyalıyor. Düğme eskiden "Kapat"ın yanında küçük bir yazıydı ve
+    /// sayfanın en altındaydı; uzun bir caption'da yarım yükseklikte açılan sayfanın dışında kalıyordu.
+    /// Önde yazmak her zaman çalışıyor, yani bu dokunuş güvenilir yol — en kolay bulunan yer
+    /// olmalı: metnin hemen altı.
+    ///
+    /// NEDEN "Kopyalandı" DURUMU: bildirim videonun üstünde, sayfanın arkasında çıkıyor. Dokunuşun
+    /// işe yaradığını düğmenin kendisi söylemeli.
+    private var copyButton: some View {
+        Button {
+            guard let caption else { return }
+            InstagramSharing.copyCaption(caption)
+            onToast(Strings.captionCopied)
+            justCopied = true
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                justCopied = false
+            }
+        } label: {
+            Label(
+                justCopied ? Strings.captionCopiedShort : Strings.captionCopy,
+                systemImage: justCopied ? "checkmark" : "doc.on.doc"
+            )
+            .font(.headline)
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(justCopied ? .green : .accentColor)
+        .disabled(caption == nil)
+        .accessibilityIdentifier("caption-copy")
+    }
 
     var body: some View {
         ScrollView {
@@ -49,6 +88,8 @@ struct CaptionSheetView: View {
                         .font(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    copyButton
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -68,46 +109,53 @@ struct CaptionSheetView: View {
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
                 .disabled(generating)
-
-                Button {
-                    share()
-                } label: {
-                    HStack {
-                        if sharing {
-                            ProgressView().padding(.trailing, 8)
-                            Text(shareProgress.map(Strings.progress) ?? Strings.sharePreparing)
-                        } else {
-                            Text(Strings.captionShare)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(generating || sharing || caption == nil)
-
-                HStack {
-                    Spacer()
-                    Button(Strings.captionCopy) {
-                        guard let caption else { return }
-                        InstagramSharing.copyCaption(caption)
-                        onToast(Strings.captionCopied)
-                    }
-                    .disabled(caption == nil)
-                    Button(Strings.close) { dismiss() }
-                }
-                .padding(.top, 4)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .padding(.bottom, 16)
             .padding(.top, 20)
         }
+        // NEDEN ALTA SABİT: sayfa yarım yükseklikte açılıyor ve büyük "Kopyala" düğmesi gelince
+        // "Reels olarak paylaş" ile "Kapat" sayfanın altından taştı — görünmek için kaydırmak
+        // gerekiyordu. Sabit şeritte caption ne kadar uzun olursa olsun, sayfa hangi yükseklikte
+        // durursa dursun ve klavye açıkken bile ikisi de ekranda.
+        .safeAreaInset(edge: .bottom) { actionBar }
         .presentationDetents([.medium, .large])
         .task { await generate(nil) }
         .sheet(item: Binding(get: { shareFile.map(ShareTarget.init) },
                              set: { shareFile = $0?.url })) { target in
             ShareSheet(items: [target.url])
         }
+    }
+
+    /// "Kapat" ve "Reels olarak paylaş", sayfanın altında sabit bir şeritte.
+    private var actionBar: some View {
+        HStack(spacing: 12) {
+            Button(Strings.close) { dismiss() }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .accessibilityIdentifier("caption-close")
+
+            Button {
+                share()
+            } label: {
+                HStack {
+                    if sharing {
+                        ProgressView().padding(.trailing, 8)
+                        Text(shareProgress.map(Strings.progress) ?? Strings.sharePreparing)
+                    } else {
+                        Text(Strings.captionShare)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(generating || sharing || caption == nil)
+            .accessibilityIdentifier("caption-share")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private func generate(_ manualExplanation: String?) async {

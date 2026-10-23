@@ -341,6 +341,12 @@ final class GalleryUITests: XCTestCase {
         allowPhotosAccessIfAsked()
     }
 
+    /// Caption sayfası açılıyor ve üç düğmesinin üçü de EKRANDA, dokunulabilir.
+    ///
+    /// NEDEN TAM GÖRÜNÜRLÜK SINANIYOR: büyük "Kopyala" düğmesi eklenince yarım yükseklikte açılan
+    /// sayfada "Reels olarak paylaş" ile "Kapat" alttan taştı; ikisi de vardı ama yarısı ekranın
+    /// dışındaydı. Varlığa bakan bir test bunu görmezdi. Ekran görüntüsü her koşuda saklanıyor:
+    /// düzen bir bakışta okunabilsin.
     @MainActor
     func testCaptionSheetOpens() throws {
         onScreen("actionCaption").tap()
@@ -348,7 +354,27 @@ final class GalleryUITests: XCTestCase {
             app.staticTexts[Copy.captionTitle].waitForExistence(timeout: 10),
             "the caption sheet did not open"
         )
-        app.buttons[Copy.close].tap()
+
+        // Caption sunucuda üretiliyor (90 sn'ye kadar); düğmeler ondan sonra son hâlinde.
+        let copy = app.buttons["caption-copy"]
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND isEnabled == true"),
+            object: copy
+        )
+        let generated = XCTWaiter().wait(for: [ready], timeout: 95) == .completed
+
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "caption-sheet"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        let screen = app.windows.firstMatch.frame
+        for identifier in ["caption-share", "caption-close"] + (generated ? ["caption-copy"] : []) {
+            let button = app.buttons[identifier]
+            XCTAssertTrue(button.exists, "\(identifier) is missing")
+            XCTAssertTrue(screen.contains(button.frame), "\(identifier) runs off the screen: \(button.frame) in \(screen)")
+        }
+        app.buttons["caption-close"].tap()
     }
 
     // MARK: - Reaching the gallery

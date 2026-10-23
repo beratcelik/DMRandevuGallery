@@ -17,15 +17,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +53,7 @@ import com.dmrandevu.gallery.media.Downloader
 import com.dmrandevu.gallery.media.InstagramSharing
 import com.dmrandevu.gallery.media.ExportOptions
 import com.dmrandevu.gallery.media.VideoExporter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,184 +108,233 @@ fun CaptionSheet(
     LaunchedEffect(rawMediaUrl) { generate(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        // NEDEN ALTTA SABİT ŞERİT: büyük "Kopyala" düğmesi gelince "Reels olarak paylaş" ile
+        // "Kapat" sayfanın altına itildi. İçerik kendi içinde kayıyor, ikisi her zaman ekranda
+        // (iOS ikizi: CaptionSheetView.actionBar).
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // Scrolls, and stays clear of the keyboard. Typing a long explanation used to
-                // grow the sheet until the two buttons below were under the keyboard with no way
-                // to reach them — the caption could be regenerated or shared only by deleting
-                // what had just been typed.
+                // Stays clear of the keyboard. Typing a long explanation used to grow the sheet
+                // until the buttons were under the keyboard with no way to reach them — the
+                // caption could be regenerated or shared only by deleting what had been typed.
                 .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
         ) {
-            Text(
-                text = stringResource(R.string.caption_title),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.caption_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
 
-            when {
-                generating -> Row(
-                    modifier = Modifier.padding(vertical = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(
-                        text = stringResource(R.string.caption_generating),
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-
-                failed -> Column(modifier = Modifier.padding(vertical = 16.dp)) {
-                    Text(
-                        text = stringResource(R.string.caption_failed),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    failureReason?.let { reason ->
+                when {
+                    generating -> Row(
+                        modifier = Modifier.padding(vertical = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text(
-                            text = reason,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
+                            text = stringResource(R.string.caption_generating),
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
+
+                    failed -> Column(modifier = Modifier.padding(vertical = 16.dp)) {
+                        Text(
+                            text = stringResource(R.string.caption_failed),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        failureReason?.let { reason ->
+                            Text(
+                                text = reason,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+
+                    // No scroll of its own any more: the sheet itself scrolls, and a scrollable box
+                    // inside a scrollable column fights it for the drag. Capping the height instead
+                    // would clip a long caption with no way to read the rest.
+                    else -> Column {
+                        Text(
+                            text = caption.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        CopyCaptionButton(
+                            caption = caption,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
                         )
                     }
                 }
 
-                // No scroll of its own any more: the sheet itself scrolls, and a scrollable box
-                // inside a scrollable column fights it for the drag. Capping the height instead
-                // would clip a long caption with no way to read the rest.
-                else -> Text(
-                    text = caption.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium
+                OutlinedTextField(
+                    value = explanation,
+                    onValueChange = { explanation = it },
+                    label = { Text(stringResource(R.string.caption_explanation_hint)) },
+                    minLines = 2,
+                    // Capped, so a long explanation scrolls inside the box instead of pushing
+                    // everything below it off the screen.
+                    maxLines = 4,
+                    enabled = !generating,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
                 )
-            }
 
-            OutlinedTextField(
-                value = explanation,
-                onValueChange = { explanation = it },
-                label = { Text(stringResource(R.string.caption_explanation_hint)) },
-                minLines = 2,
-                // Capped, so a long explanation scrolls inside the box instead of pushing
-                // everything below it off the screen.
-                maxLines = 4,
-                enabled = !generating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
-            )
-
-            OutlinedButton(
-                onClick = { scope.launch { generate(explanation.ifBlank { null }) } },
-                enabled = !generating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-            ) {
-                Text(stringResource(R.string.caption_regenerate))
-            }
-
-            Button(
-                onClick = {
-                    val text = caption ?: return@Button
-                    sharing = true
-                    scope.launch {
-                        try {
-                            // Read at click time rather than collected: the sheet has no view
-                            // model, and the toggles write through synchronously.
-                            val settings = ServiceLocator.settings
-                            val file = ServiceLocator.downloader.downloadForShare(
-                                rawMediaUrl,
-                                conversation.clientName,
-                                ExportOptions(
-                                    blurFaces = settings.blurFaces,
-                                    blurPlates = settings.blurPlates,
-                                    fastPlates = settings.fastPlates,
-                                    watermarkHandle = settings.igUsername
-                                        .takeIf { settings.watermark && it.isNotBlank() },
-                                    censorAudio = settings.censorAudio,
-                                    censorInsults = settings.censorInsults,
-                                    // ELLE İŞARETLEME KİPİ DE GEÇİYOR. Atlandığında varsayılan
-                                    // false oluyordu: operatör "elle" kipini seçip küfürleri
-                                    // kendi işaretlediği hâlde bu sayfadan paylaştığında video
-                                    // baştan taranıyordu — iOS ikizi geçiriyordu, burası değil.
-                                    censorByHand = settings.censorByHand,
-                                    // The sheet has no view model, so the marks are read the
-                                    // same way the toggles are — straight from the store.
-                                    manualWindows = ServiceLocator.manualMarks.forMedia(
-                                        conversation.key,
-                                        conversation.urls.indexOf(rawMediaUrl).coerceAtLeast(0)
-                                    )
-                                )
-                            ) { shareProgress = it }
-                            // Instagram drops EXTRA_TEXT, so the caption travels via the clipboard —
-                            // the same trick the web gallery uses.
-                            copyToClipboard(context, text)
-                            Toast.makeText(context, R.string.caption_copied, Toast.LENGTH_LONG).show()
-                            shareVideo(context, file)
-                            onDismiss()
-                        } catch (e: UnauthorizedException) {
-                            onSessionLost()
-                            onDismiss()
-                        } catch (e: VideoExporter.ExportFailedException) {
-                            Toast.makeText(
-                                context,
-                                if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
-                                    R.string.censor_unplaced
-                                } else {
-                                    R.string.export_failed
-                                },
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
-                        } finally {
-                            sharing = false
-                            shareProgress = null
-                        }
-                    }
-                },
-                enabled = !generating && !sharing && caption != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-            ) {
-                if (sharing) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(
-                        text = shareProgress
-                            ?.let { stringResource(R.string.face_blur_progress, it) }
-                            ?: stringResource(R.string.share_preparing),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                } else {
-                    Text(stringResource(R.string.caption_share))
+                OutlinedButton(
+                    onClick = { scope.launch { generate(explanation.ifBlank { null }) } },
+                    enabled = !generating,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.caption_regenerate))
                 }
             }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.End
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 8.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
+                OutlinedButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.close))
+                }
+                Button(
                     onClick = {
-                        caption?.let {
-                            copyToClipboard(context, it)
-                            Toast.makeText(context, R.string.caption_copied, Toast.LENGTH_SHORT).show()
+                        val text = caption ?: return@Button
+                        sharing = true
+                        scope.launch {
+                            try {
+                                // Read at click time rather than collected: the sheet has no view
+                                // model, and the toggles write through synchronously.
+                                val settings = ServiceLocator.settings
+                                val file = ServiceLocator.downloader.downloadForShare(
+                                    rawMediaUrl,
+                                    conversation.clientName,
+                                    ExportOptions(
+                                        blurFaces = settings.blurFaces,
+                                        blurPlates = settings.blurPlates,
+                                        fastPlates = settings.fastPlates,
+                                        watermarkHandle = settings.igUsername
+                                            .takeIf { settings.watermark && it.isNotBlank() },
+                                        censorAudio = settings.censorAudio,
+                                        censorInsults = settings.censorInsults,
+                                        // ELLE İŞARETLEME KİPİ DE GEÇİYOR. Atlandığında varsayılan
+                                        // false oluyordu: operatör "elle" kipini seçip küfürleri
+                                        // kendi işaretlediği hâlde bu sayfadan paylaştığında video
+                                        // baştan taranıyordu — iOS ikizi geçiriyordu, burası değil.
+                                        censorByHand = settings.censorByHand,
+                                        // The sheet has no view model, so the marks are read the
+                                        // same way the toggles are — straight from the store.
+                                        manualWindows = ServiceLocator.manualMarks.forMedia(
+                                            conversation.key,
+                                            conversation.urls.indexOf(rawMediaUrl).coerceAtLeast(0)
+                                        )
+                                    )
+                                ) { shareProgress = it }
+                                // Instagram drops EXTRA_TEXT, so the caption travels via the clipboard —
+                                // the same trick the web gallery uses.
+                                copyToClipboard(context, text)
+                                Toast.makeText(context, R.string.caption_copied, Toast.LENGTH_LONG).show()
+                                shareVideo(context, file)
+                                onDismiss()
+                            } catch (e: UnauthorizedException) {
+                                onSessionLost()
+                                onDismiss()
+                            } catch (e: VideoExporter.ExportFailedException) {
+                                Toast.makeText(
+                                    context,
+                                    if (ServiceLocator.exporter.isUnplacedProfanity(e)) {
+                                        R.string.censor_unplaced
+                                    } else {
+                                        R.string.export_failed
+                                    },
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, R.string.share_failed, Toast.LENGTH_SHORT).show()
+                            } finally {
+                                sharing = false
+                                shareProgress = null
+                            }
                         }
                     },
-                    enabled = caption != null
+                    enabled = !generating && !sharing && caption != null,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(stringResource(R.string.caption_copy))
-                }
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.close))
+                    if (sharing) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = shareProgress
+                                ?.let { stringResource(R.string.face_blur_progress, it) }
+                                ?: stringResource(R.string.share_preparing),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    } else {
+                        Text(stringResource(R.string.caption_share))
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * Caption'ın hemen altındaki büyük "Kopyala" düğmesi. iOS ikizi: `CaptionSheetView.copyButton`.
+ *
+ * NEDEN BÜYÜK VE NEDEN BURADA: iPhone'da caption Instagram'a kendiliğinden ulaşmıyor ve operatör
+ * her paylaşımda buraya dönüp kopyalıyor; düğme eskiden "Kapat"ın yanında küçük bir yazıydı ve
+ * sayfanın en altındaydı. Android'de pano devri çalışıyor, ama aynı düğme iki platformda aynı
+ * yerde durmalı: ekipte iki telefonu birden kullananlar var.
+ *
+ * NEDEN "Kopyalandı" DURUMU: bildirim sayfanın arkasında kalabiliyor. Dokunuşun işe yaradığını
+ * düğmenin kendisi söylemeli.
+ */
+@Composable
+private fun CopyCaptionButton(caption: String?, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var justCopied by remember { mutableStateOf(false) }
+    LaunchedEffect(justCopied) {
+        if (justCopied) {
+            delay(2_000)
+            justCopied = false
+        }
+    }
+    FilledTonalButton(
+        onClick = {
+            caption?.let {
+                copyToClipboard(context, it)
+                Toast.makeText(context, R.string.caption_copied, Toast.LENGTH_SHORT).show()
+                justCopied = true
+            }
+        },
+        enabled = caption != null,
+        modifier = modifier.heightIn(min = 52.dp)
+    ) {
+        Icon(
+            imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+            // Metin hemen yanında; simgeyi ayrıca okutmak aynı şeyi iki kez söyletirdi.
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = stringResource(if (justCopied) R.string.caption_copied_short else R.string.caption_copy),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 8.dp)
+        )
     }
 }
 

@@ -168,6 +168,7 @@ enum Strings {
     static let captionRestored = "Caption panoya geri kondu — Reels'e dönüp yapıştırın"
     static let captionCopied = "Caption panoya kopyalandı"
     static let captionCopy = "Kopyala"
+    static let captionCopiedShort = "Kopyalandı"
     static let sharePreparing = "Video hazırlanıyor…"
     static let shareFailed = "Paylaşım başarısız"
     static let close = "Kapat"
