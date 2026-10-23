@@ -85,6 +85,16 @@ final class GalleryViewModel {
     private let marks = ServiceLocator.manualMarks
 
     private var pending: (conversation: Conversation, job: Task<Void, Never>)?
+
+    /// Deletes sent but not answered yet. A reload waits for them; see ``reloadFromTop()``.
+    private var commitsInFlight = 0
+
+    /// When the app last went to the background, or nil.
+    private var backgroundedAt: Date?
+
+    /// Bumped by every reload. The view watches it to put the pager back on the first page, which
+    /// only the view can move (`scrollPosition` is its state).
+    private(set) var reloadGeneration = 0
     private var lastSettledKey: String?
     private var nextOffset = 0
     private var committedDeletes = 0
@@ -253,8 +263,9 @@ final class GalleryViewModel {
         commitPendingNow()
         let job = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.undoWindowSeconds))
-            guard !Task.isCancelled else { return }
-            await self?.commit(conversation)
+            guard !Task.isCancelled, let self else { return }
+            self.commitsInFlight += 1
+            await self.commit(conversation)
         }
         pending = (conversation, job)
     }
@@ -269,17 +280,34 @@ final class GalleryViewModel {
         guard let current = pending else { return }
         current.job.cancel()
         pending = nil
+        // Raised here, not inside the task: a reload checking it before the task has started
+        // would otherwise read the list while this delete is still to be sent.
+        commitsInFlight += 1
         Task { await commit(current.conversation) }
     }
 
+    /// The caller has already raised ``commitsInFlight``; this lowers it once the request is done.
     private func commit(_ conversation: Conversation) async {
+        defer { commitsInFlight -= 1 }
         do {
             try await repository.deleteConversation(
                 salonId: conversation.salonId,
-                clientId: conversation.clientId
+                clientId: conversation.clientId,
+                seenUntil: conversation.lastCustomerAt
             )
         } catch is UnauthorizedError {
             sessionLost = true
+            return
+        } catch is ConversationChangedError {
+            // Müşteri bu liste yüklendikten sonra yeniden yazdı ve sunucu silmedi.
+            //
+            // NEDEN LİSTEDEN ÇIKARILIYOR: elimizdeki kopya yeni mesajı taşımıyor. Listede kalsaydı
+            // akışın sonundaki yeniden tarama onu "zaten var" diye atlar ve yeni video bu oturumda
+            // hiç görünmezdi; çıkarılınca o tarama müşteriyi yeni videolarıyla sona ekliyor.
+            // Operatör tam o müşterideyse dokunulmuyor: izlediği sayfa altından kaymasın.
+            toast = Strings.deleteRefusedNewMessage(conversation.displayName)
+            if pending?.conversation.key == conversation.key { pending = nil }
+            if lastSettledKey != conversation.key { items.removeAll { $0.key == conversation.key } }
             return
         } catch {
             // The conversation stays in the feed; the next swipe past it can try again.
@@ -296,6 +324,45 @@ final class GalleryViewModel {
         }
         if pending?.conversation.key == conversation.key { pending = nil }
         if items.count <= Self.prefetchDistance { await loadMore() }
+    }
+
+    // MARK: - Back from the background
+
+    /// The app went to the background: settle what is waiting, and note when.
+    func leftForeground() {
+        backgroundedAt = Date()
+        commitPendingNow()
+        // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp ana
+        // ekrana çıkmak kararı sessizce yutmamalı.
+        commitDecisionsNow()
+    }
+
+    /// Back in the foreground: a list older than ``feedStaleAfterSeconds`` is read again.
+    func returnedToForeground() {
+        guard let since = backgroundedAt else { return }
+        backgroundedAt = nil
+        if isFeedStale(away: Date().timeIntervalSince(since)) { reloadFromTop() }
+    }
+
+    /// Reads the feed again as a fresh launch would. Why from the top: ``isFeedStale(away:)``.
+    private func reloadFromTop() {
+        commitPendingNow()
+        Task {
+            // Yoldaki bir silme bitmeden okunan liste, az önce silinen müşteriyi geri getirirdi;
+            // yoldaki bir sayfa yüklemesi de kendi ofsetini bu sıfırlamanın üstüne yazardı.
+            while loadingMore || commitsInFlight > 0 {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            items = []
+            failures = [:]
+            nextOffset = 0
+            committedDeletes = 0
+            lastSettledKey = nil
+            hasMore = true
+            loading = true
+            reloadGeneration += 1
+            await loadMore(initial: true)
+        }
     }
 
     // MARK: - Kaydırma kararları (geri alma penceresi)

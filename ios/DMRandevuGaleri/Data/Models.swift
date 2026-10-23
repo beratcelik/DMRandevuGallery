@@ -21,6 +21,13 @@ struct Conversation: Decodable, Identifiable, Equatable {
     /// Index-aligned with ``urls``: when each video arrived.
     var mediaTs: [String?] = []
     var lastMessageDate: String?
+    /// Müşterinin son mesajının anı (ms), sayfa yüklendiği hâliyle.
+    ///
+    /// Silerken `seenUntil` olarak geri gidiyor: "bu müşteriyi buraya kadar gördüm". Müşteri o
+    /// andan sonra yazdıysa sunucu silmiyor (409) — telefondaki liste saatlerce eski olabiliyor
+    /// ve onun üstünden ilerlemek, kimsenin görmediği yeni videoları da silerdi. Eski sunucu
+    /// göndermiyor; o zaman silme eskisi gibi koşulsuz. Android ikizi: `Conversation.lastCustomerAt`.
+    var lastCustomerAt: Int64?
 
     /// Stable identity — the delete flow tracks pages by this, never by list index.
     var key: String { "\(salonId):\(clientId)" }
@@ -94,6 +101,9 @@ struct PasswordChangeError: Error {
 }
 
 struct AccountNotFoundError: Error {}
+
+/// Silinmedi: müşteri, bu telefon onu yükledikten sonra yeniden yazdı (sunucunun 409'u).
+struct ConversationChangedError: Error {}
 
 /// The stored or typed server address is not a usable URL.
 struct InvalidServerAddressError: Error {}

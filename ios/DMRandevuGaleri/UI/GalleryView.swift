@@ -118,6 +118,11 @@ struct GalleryView: View {
             // key to compare against.
             if currentPageID == nil { currentPageID = first }
         }
+        .onChange(of: model.reloadGeneration) { _, _ in
+            // The feed is being read again from the top (see isFeedStale): forget the old page so
+            // the first one of the new list is put under the pager as it arrives, just above.
+            currentPageID = nil
+        }
         .onChange(of: model.sessionLost) { _, lost in
             guard lost else { return }
             ServiceLocator.repository.clearSession()
@@ -144,15 +149,23 @@ struct GalleryView: View {
                 if InstagramSharing.restoreCaptionOnReturn() != nil {
                     model.toast = Strings.captionRestored
                 }
+                // A long absence leaves a stale list behind; it is read again (see isFeedStale).
+                model.returnedToForeground()
                 return
             }
 
             // Leaving the app settles the pending deletion — otherwise a swipe followed by a home
             // press would silently keep the conversation the operator meant to discard.
-            model.commitPendingNow()
-            // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp ana
-            // ekrana çıkmak kararı sessizce yutmamalı.
-            model.commitDecisionsNow()
+            if phase == .background {
+                // Also notes the time, which only a real trip to the background should do:
+                // pulling down Notification Centre is `.inactive` too.
+                model.leftForeground()
+            } else {
+                model.commitPendingNow()
+                // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp ana
+                // ekrana çıkmak kararı sessizce yutmamalı.
+                model.commitDecisionsNow()
+            }
             playerManager?.pauseAll()
         }
         .onDisappear { playerManager?.releaseAll() }

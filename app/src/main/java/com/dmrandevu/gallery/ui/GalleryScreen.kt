@@ -113,16 +113,18 @@ fun GalleryScreen(
     }
 
     // Leaving the app settles the pending deletion — otherwise a swipe followed by a home
-    // press would silently keep the conversation the user meant to discard.
+    // press would silently keep the conversation the user meant to discard. Coming back after
+    // a long absence reads the feed again (see isFeedStale).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                viewModel.commitPendingNow()
-                // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp
-                // ana ekrana basmak kararı sessizce yutmamalı.
-                viewModel.commitDecisionsNow()
-                playerManager.pauseAll()
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.onLeftForeground()
+                    playerManager.pauseAll()
+                }
+                Lifecycle.Event.ON_START -> viewModel.onReturnedToForeground()
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

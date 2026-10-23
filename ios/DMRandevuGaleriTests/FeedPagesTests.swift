@@ -159,4 +159,17 @@ struct SwipeDecisionTests {
     func unmeasuredWidthDecidesNothing() {
         #expect(decisionFor(translation: 500, velocity: 0, width: 0) == nil)
     }
+
+    /// Geceyi arka planda geçiren telefon, başka bir telefonda temizlenmiş müşterileri sabah
+    /// yeniden gösteriyordu. Ama Reels paylaşıp dönmek birkaç dakika sürüyor ve operatör o
+    /// dönüşte kaldığı videoda olmalı. Android ikizi: FeedPagesTest.
+    @Test("liste ancak uzun bir aradan sonra bayat sayılıyor")
+    func feedIsStaleOnlyAfterALongAbsence() {
+        #expect(!isFeedStale(away: 0))
+        #expect(!isFeedStale(away: 3 * 60))
+        #expect(!isFeedStale(away: feedStaleAfterSeconds - 1))
+        #expect(isFeedStale(away: feedStaleAfterSeconds))
+        #expect(isFeedStale(away: 12 * 60 * 60))
+    }
 }
+

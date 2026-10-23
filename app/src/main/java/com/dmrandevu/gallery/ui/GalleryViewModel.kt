@@ -10,8 +10,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dmrandevu.gallery.ServiceLocator
+import android.os.SystemClock
 import com.dmrandevu.gallery.data.ChatChannel
 import com.dmrandevu.gallery.data.Conversation
+import com.dmrandevu.gallery.data.ConversationChangedException
 import com.dmrandevu.gallery.data.IhbarAccount
 import com.dmrandevu.gallery.data.IhbarException
 import com.dmrandevu.gallery.data.IhbarMark
@@ -176,6 +178,12 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
     val events = _events.receiveAsFlow()
 
     private var pending: PendingDelete? = null
+
+    /** Deletes sent but not answered yet. A reload waits for them; see [reloadFromTop]. */
+    private var commitsInFlight = 0
+
+    /** When the app last went to the background ([SystemClock.elapsedRealtime]), or null. */
+    private var backgroundedAt: Long? = null
     private var lastSettledKey: String? = null
     private var nextOffset = 0
     private var committedDeletes = 0
@@ -354,6 +362,7 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         commitPendingNow()
         val job = viewModelScope.launch {
             delay(UNDO_WINDOW_MS)
+            commitsInFlight++
             commit(conversation)
         }
         pending = PendingDelete(conversation, job)
@@ -369,14 +378,37 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
         val current = pending ?: return
         current.job.cancel()
         pending = null
+        commitsInFlight++
         viewModelScope.launch { commit(current.conversation) }
     }
 
+    /** The caller has already raised [commitsInFlight]; this lowers it once the request is done. */
     private suspend fun commit(conversation: Conversation) {
         try {
-            repo.deleteConversation(conversation.salonId, conversation.clientId)
+            sendDelete(conversation)
+        } finally {
+            commitsInFlight--
+        }
+    }
+
+    private suspend fun sendDelete(conversation: Conversation) {
+        try {
+            repo.deleteConversation(conversation.salonId, conversation.clientId, conversation.lastCustomerAt)
         } catch (e: UnauthorizedException) {
             _events.send(GalleryEvent.SessionLost)
+            return
+        } catch (e: ConversationChangedException) {
+            // Müşteri bu liste yüklendikten sonra yeniden yazdı ve sunucu silmedi.
+            //
+            // NEDEN LİSTEDEN ÇIKARILIYOR: elimizdeki kopya yeni mesajı taşımıyor. Listede kalsaydı
+            // akışın sonundaki yeniden tarama onu "zaten var" diye atlar ve yeni video bu oturumda
+            // hiç görünmezdi; çıkarılınca o tarama müşteriyi yeni videolarıyla sona ekliyor.
+            // Operatör tam o müşterideyse dokunulmuyor: izlediği sayfa altından kaymasın.
+            _events.send(
+                GalleryEvent.ToastFormat(R.string.delete_refused_new_message, listOf(conversation.displayName))
+            )
+            if (pending?.conversation?.key == conversation.key) pending = null
+            if (lastSettledKey != conversation.key) removeFromFeed(conversation.key, deleted = false)
             return
         } catch (e: Exception) {
             // The conversation stays in the feed; the next swipe past it can try again.
@@ -384,26 +416,76 @@ class GalleryViewModel(private val igId: String) : ViewModel() {
             return
         }
 
-        val index = items.indexOfFirst { it.key == conversation.key }
-        if (index != -1) {
-            val currentPage = currentPageProvider()
-            // SİLİNEN KONUŞMANIN KAPLADIĞI SAYFA SAYISI, silmeden ÖNCE okunuyor.
-            // Düz akışta bir konuşma birden çok sayfa kaplıyor; tek sayfa geri
-            // adım atmak, izlenen videonun başka bir müşterinin videosuna
-            // kaymasıyla sonuçlanırdı.
-            val span = pageSpan(items, conversation.key)
-            val firstPage = firstPageOf(feed, conversation.key)
-            items.removeAt(index)
-            committedDeletes++
-            _remaining.value = (_remaining.value - 1).coerceAtLeast(0)
-            // Görüş alanının ÜSTÜNDEKİ sayfalar kalkınca her şey yukarı kayıyor;
-            // çağrıcı aynı karede geri adım atmazsa izlenen video değişir.
-            if (firstPage in 0 until currentPage) {
-                keepCurrentPage((currentPage - span).coerceAtLeast(0))
-            }
-        }
+        removeFromFeed(conversation.key, deleted = true)
         if (pending?.conversation?.key == conversation.key) pending = null
         if (items.size <= PREFETCH_DISTANCE) loadMore()
+    }
+
+    /**
+     * Drops one conversation from the feed, keeping the pager on the video being watched.
+     *
+     * [deleted] says whether the server's index shrank too: only then does the paging offset need
+     * the [committedDeletes] correction, and only then is there one fewer left to do.
+     */
+    private fun removeFromFeed(key: String, deleted: Boolean) {
+        val index = items.indexOfFirst { it.key == key }
+        if (index == -1) return
+        val currentPage = currentPageProvider()
+        // SİLİNEN KONUŞMANIN KAPLADIĞI SAYFA SAYISI, silmeden ÖNCE okunuyor.
+        // Düz akışta bir konuşma birden çok sayfa kaplıyor; tek sayfa geri
+        // adım atmak, izlenen videonun başka bir müşterinin videosuna
+        // kaymasıyla sonuçlanırdı.
+        val span = pageSpan(items, key)
+        val firstPage = firstPageOf(feed, key)
+        items.removeAt(index)
+        if (deleted) {
+            committedDeletes++
+            _remaining.value = (_remaining.value - 1).coerceAtLeast(0)
+        }
+        // Görüş alanının ÜSTÜNDEKİ sayfalar kalkınca her şey yukarı kayıyor;
+        // çağrıcı aynı karede geri adım atmazsa izlenen video değişir.
+        if (firstPage in 0 until currentPage) {
+            keepCurrentPage((currentPage - span).coerceAtLeast(0))
+        }
+    }
+
+    // ── arka plandan dönüş ────────────────────────────────────────────────────────
+
+    /** The app went to the background: settle what is waiting, and note when. */
+    fun onLeftForeground() {
+        backgroundedAt = SystemClock.elapsedRealtime()
+        commitPendingNow()
+        // Bekleyen kaydırma kararları da anında gönderiliyor: kaydırıp
+        // ana ekrana basmak kararı sessizce yutmamalı.
+        commitDecisionsNow()
+    }
+
+    /** Back in the foreground: a list older than [FEED_STALE_AFTER_MS] is read again. */
+    fun onReturnedToForeground() {
+        val since = backgroundedAt ?: return
+        backgroundedAt = null
+        if (isFeedStale(SystemClock.elapsedRealtime() - since)) reloadFromTop()
+    }
+
+    /** Reads the feed again as a fresh launch would. Why from the top: [isFeedStale]. */
+    private fun reloadFromTop() {
+        commitPendingNow()
+        viewModelScope.launch {
+            // Yoldaki bir silme bitmeden okunan liste, az önce silinen müşteriyi geri getirirdi;
+            // yoldaki bir sayfa yüklemesi de kendi ofsetini bu sıfırlamanın üstüne yazardı.
+            while (loadingMore || commitsInFlight > 0) delay(RESCAN_WAIT_MS)
+            items.clear()
+            failures.clear()
+            nextOffset = 0
+            committedDeletes = 0
+            lastSettledKey = null
+            _hasMore.value = true
+            _loading.value = true
+            // Aynı karede: sayfalayıcı eski sırasında kalsaydı, yeni liste geldiğinde operatör
+            // bir müşterinin ortasına düşerdi.
+            keepCurrentPage(0)
+            loadMore(initial = true)
+        }
     }
 
     // ── kaydırma kararları (geri alma penceresi) ──────────────────────────────

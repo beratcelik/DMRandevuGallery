@@ -140,4 +140,18 @@ class FeedPagesTest {
         assertEquals(3, firstPageOf(feed, "s:b"))
         assertEquals(-1, firstPageOf(feed, "s:yok"))
     }
+
+    /**
+     * Geceyi arka planda geçiren telefon, başka bir telefonda temizlenmiş
+     * müşterileri sabah yeniden gösteriyordu. Ama Reels paylaşıp dönmek birkaç
+     * dakika sürüyor ve operatör o dönüşte kaldığı videoda olmalı.
+     */
+    @Test
+    fun `liste ancak uzun bir aradan sonra bayat sayılıyor`() {
+        assertEquals(false, isFeedStale(0))
+        assertEquals(false, isFeedStale(3 * 60 * 1000L))
+        assertEquals(false, isFeedStale(FEED_STALE_AFTER_MS - 1))
+        assertEquals(true, isFeedStale(FEED_STALE_AFTER_MS))
+        assertEquals(true, isFeedStale(12 * 60 * 60 * 1000L))
+    }
 }

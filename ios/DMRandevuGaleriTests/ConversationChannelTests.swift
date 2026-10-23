@@ -61,4 +61,22 @@ final class ConversationChannelTests: XCTestCase {
         let conversation = try decode(clientId: "wa:90555", channel: "whatsapp", urls: ["wa-media://1/998877"])
         XCTAssertEqual(conversation.urls, ["wa-media://1/998877"])
     }
+
+    /// Silme bu değeri `seenUntil` olarak geri gönderiyor; müşteri o andan sonra yazdıysa sunucu
+    /// silmiyor. Eski sunucu göndermiyor: o zaman nil kalmalı ve silme eskisi gibi koşulsuz
+    /// gitmeli, çözümleme düşmemeli. Android ikizi aynı senaryoyu sınıyor.
+    func testTheCustomersLastMessageTimeIsReadAndAbsentFromOldServers() throws {
+        func decode(lastCustomerAt: Any?) throws -> Conversation {
+            var item: [String: Any] = [
+                "salonId": "1", "clientId": "77", "clientName": "x",
+                "urls": ["https://cdn/v.mp4"], "mediaTs": [NSNull()], "lastMessageDate": NSNull(),
+            ]
+            if let lastCustomerAt { item["lastCustomerAt"] = lastCustomerAt }
+            return try JSONDecoder().decode(Conversation.self, from: JSONSerialization.data(withJSONObject: item))
+        }
+        XCTAssertEqual(try decode(lastCustomerAt: 1_792_951_200_000).lastCustomerAt, 1_792_951_200_000)
+        XCTAssertNil(try decode(lastCustomerAt: nil).lastCustomerAt)
+        XCTAssertNil(try decode(lastCustomerAt: NSNull()).lastCustomerAt)
+    }
 }
+

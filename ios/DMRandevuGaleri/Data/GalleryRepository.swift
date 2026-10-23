@@ -132,14 +132,18 @@ final class GalleryRepository {
     }
 
     /// Deletes the whole conversation. A 404 means it is already gone — same end state.
-    func deleteConversation(salonId: String, clientId: String) async throws {
+    /// `seenUntil` is the conversation's `lastCustomerAt` as this phone loaded it. The server
+    /// refuses (409, ``ConversationChangedError``) when the customer has written since.
+    func deleteConversation(salonId: String, clientId: String, seenUntil: Int64?) async throws {
+        let query = seenUntil.map { [URLQueryItem(name: "seenUntil", value: String($0))] } ?? []
         var request = URLRequest(
-            url: try require(endpoint("/admin/conversation/\(salonId)/\(clientId)"))
+            url: try require(endpoint("/admin/conversation/\(salonId)/\(clientId)", query: query))
         )
         request.httpMethod = "DELETE"
         let (_, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 { throw UnauthorizedError() }
+        if status == 409 { throw ConversationChangedError() }
         if !(200..<300).contains(status) && status != 404 { throw HTTPStatusError(code: status) }
     }
 

@@ -60,4 +60,17 @@ class ConversationChannelTest {
         )
         assertEquals(listOf("wa-media://1/998877"), conversation.urls)
     }
+
+    /**
+     * Silme bu değeri `seenUntil` olarak geri gönderiyor; müşteri o andan sonra
+     * yazdıysa sunucu silmiyor. Eski sunucu göndermiyor: o zaman null kalmalı ve
+     * silme eskisi gibi koşulsuz gitmeli, çözümleme düşmemeli.
+     */
+    @Test
+    fun `müşterinin son yazdığı an okunuyor, eski sunucuda yok`() {
+        val conversation = decode("""{"salonId":"1","clientId":"77","lastCustomerAt":1792951200000}""")
+        assertEquals(1792951200000L, conversation.lastCustomerAt)
+        assertEquals(null, decode("""{"salonId":"1","clientId":"77"}""").lastCustomerAt)
+        assertEquals(null, decode("""{"salonId":"1","clientId":"77","lastCustomerAt":null}""").lastCustomerAt)
+    }
 }

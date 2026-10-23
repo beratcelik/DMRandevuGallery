@@ -23,6 +23,8 @@
     <string name="video_refresh_failed">Yeni bağlantı alınamadı — video sunucuda da yok olabilir</string>
     <string name="end_of_feed">Son müşteriye ulaşıldı</string>
     <string name="all_seen">Hepsini gördün</string>
+    <!-- Sunucu silmedi: müşteri, liste yüklendikten sonra yeniden yazdı. Akışın sonunda yeni videolarıyla geri geliyor. -->
+    <string name="delete_refused_new_message">%1$s yeni mesaj gönderdi — silinmedi</string>
     <string name="logout">Çıkış yap</string>
     <string name="settings">Ayarlar</string>
     <string name="settings_account">Hesap</string>

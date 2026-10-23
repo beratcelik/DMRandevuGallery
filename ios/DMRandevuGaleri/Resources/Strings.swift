@@ -25,6 +25,9 @@ enum Strings {
 
     static let emptyGallery = "Videolu konuşma bulunamadı"
     static let allSeen = "Hepsini gördün"
+    /// Sunucu silmedi: müşteri, liste yüklendikten sonra yeniden yazdı. Akışın sonunda yeni
+    /// videolarıyla geri geliyor.
+    static func deleteRefusedNewMessage(_ name: String) -> String { "\(name) yeni mesaj gönderdi — silinmedi" }
     static let endOfFeed = "Son müşteriye ulaşıldı"
     static let videoExpired = "Video süresi doldu"
     static let videoFailed = "Video yüklenemedi"

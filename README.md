@@ -11,6 +11,17 @@ customer deletes the one you left**, after a five-second grace period in which s
 cancels it. Deleting only clears the conversation from the server's Redis; the DM itself and
 its media are untouched, on whichever app it arrived.
 
+A delete only goes through if the customer has not written since the phone loaded them: it
+carries `seenUntil`, the time of the customer's last message as the phone received it
+(`lastCustomerAt` on each gallery item). If they wrote again in the meantime, the server keeps
+the conversation (409), the app says "… yeni mesaj gönderdi — silinmedi", and the customer comes
+back at the end of the feed with what they sent. The phone's list can be hours old — two phones
+clear the same account, or one sat in the background overnight — and without this, moving past a
+customer on it erased videos nobody had seen. For the same reason, coming back to the app after
+**10 minutes or more** in the background reads the feed again from the top, as a fresh launch
+does; a shorter trip (posting a Reel) keeps your place. Against a server too old to send
+`lastCustomerAt`, deletes are unconditional, as before.
+
 The İhbar calls (status, approve, dismiss) go to the signed-in DMRandevu session at
 `/admin/ihbar/…`, which forwards them to the Trafik İhbar server with a device token held on that
 server (`IHBAR_DEVICE_TOKEN`). The phone carries no İhbar address and no token. Every other account

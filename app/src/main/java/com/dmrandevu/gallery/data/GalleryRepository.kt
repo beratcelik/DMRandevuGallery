@@ -108,14 +108,27 @@ class GalleryRepository(
         }
     }
 
-    /** Deletes the whole conversation. A 404 means it is already gone — same end state. */
-    suspend fun deleteConversation(salonId: String, clientId: String) = withContext(Dispatchers.IO) {
+    /**
+     * Deletes the whole conversation. A 404 means it is already gone — same end state.
+     *
+     * [seenUntil] is the conversation's `lastCustomerAt` as this phone loaded it. The server
+     * refuses (409, [ConversationChangedException]) when the customer has written since.
+     */
+    suspend fun deleteConversation(
+        salonId: String,
+        clientId: String,
+        seenUntil: Long?
+    ) = withContext(Dispatchers.IO) {
+        val url = "$base/admin/conversation/$salonId/$clientId".toHttpUrl().newBuilder()
+            .apply { if (seenUntil != null) addQueryParameter("seenUntil", seenUntil.toString()) }
+            .build()
         val request = Request.Builder()
-            .url("$base/admin/conversation/$salonId/$clientId")
+            .url(url)
             .delete()
             .build()
         client.newCall(request).execute().use { response ->
             if (response.code == 401) throw UnauthorizedException()
+            if (response.code == 409) throw ConversationChangedException()
             if (!response.isSuccessful && response.code != 404) {
                 throw IllegalStateException("Delete failed: HTTP ${response.code}")
             }
@@ -227,6 +240,9 @@ class GalleryRepository(
 }
 
 class AccountNotFoundException : Exception("Account not found")
+
+/** Silinmedi: müşteri, bu telefon onu yükledikten sonra yeniden yazdı (sunucunun 409'u). */
+class ConversationChangedException : Exception("The customer wrote again; not deleted")
 
 /** Şifre değişmedi; [message] sunucunun söylediği (Türkçe) sebep, doğrudan ekrana yazılabilir. */
 class PasswordChangeException(message: String) : Exception(message)

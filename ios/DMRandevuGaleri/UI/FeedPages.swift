@@ -140,3 +140,24 @@ func decisionFor(translation: CGFloat, velocity: CGFloat, width: CGFloat) -> Swi
 
     return translation > 0 ? .report : .dismiss
 }
+
+/// Uygulama bu kadar süre arka planda kaldıysa elindeki liste BAYAT sayılıyor. Android ikizi:
+/// `FEED_STALE_AFTER_MS` (ui/FeedPages.kt).
+///
+/// NEDEN VAR: liste yalnızca açılışta (ve kaydırdıkça sayfa sayfa) yükleniyordu. Geceyi arka
+/// planda geçiren bir telefon, o arada başka bir telefonda temizlenmiş müşterileri sabah yeniden
+/// gösteriyordu. Bayat liste yalnızca zaman kaybı da değil: üstünden ilerlemek SİLME gönderiyor.
+///
+/// NEDEN ON DAKİKA: Instagram'a gidip Reels paylaşıp dönmek birkaç dakika sürüyor ve dönüşte
+/// operatör kaldığı videoda olmalı. Daha kısa bir aradaki değişikliği sunucu zaten yakalıyor:
+/// silme `seenUntil` taşıyor ve müşteri o arada yazdıysa sunucu silmiyor.
+///
+/// NEDEN BAŞTAN, KALINAN YERDEN DEĞİL: aradayken yazan müşteriler sunucunun listesinde EN ÜSTE
+/// çıkıyor. Kalınan yerde durulsaydı onlar operatörün üstünde kalırdı; ileri kaydırmak oraya hiç
+/// gitmiyor ve akışın sonundaki yeniden tarama da listede ZATEN olanları atlıyor — operatör
+/// "Hepsini gördün" görürken görülmemiş müşteriler yukarıda beklerdi. Yeniden yükleme bu yüzden
+/// uygulamayı kapatıp açmakla aynı yolu izliyor.
+let feedStaleAfterSeconds: TimeInterval = 10 * 60
+
+/// Arka planda geçen `away` saniye sonunda liste sunucudan yeniden mi okunmalı?
+func isFeedStale(away: TimeInterval) -> Bool { away >= feedStaleAfterSeconds }

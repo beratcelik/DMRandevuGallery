@@ -25,7 +25,16 @@ data class Conversation(
     val urls: List<String> = emptyList(),
     /** Index-aligned with [urls]: when each video arrived. */
     val mediaTs: List<String?> = emptyList(),
-    val lastMessageDate: String? = null
+    val lastMessageDate: String? = null,
+    /**
+     * Müşterinin son mesajının anı (ms), sayfa yüklendiği hâliyle.
+     *
+     * Silerken `seenUntil` olarak geri gidiyor: "bu müşteriyi buraya kadar gördüm". Müşteri o
+     * andan sonra yazdıysa sunucu silmiyor (409) — telefondaki liste saatlerce eski olabiliyor
+     * ve onun üstünden ilerlemek, kimsenin görmediği yeni videoları da silerdi. Eski sunucu
+     * göndermiyor; o zaman silme eskisi gibi koşulsuz.
+     */
+    val lastCustomerAt: Long? = null
 ) {
     /** Stable identity — the delete flow tracks pages by this, never by list index. */
     val key: String get() = "$salonId:$clientId"
