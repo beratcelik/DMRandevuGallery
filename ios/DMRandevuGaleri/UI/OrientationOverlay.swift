@@ -110,14 +110,14 @@ struct OrientationOverlay: View {
     }
 }
 
-/// Tanıtımın gösterildiği yapıyı adlandıran etiket ("1.0+1").
+/// Tanıtımın sürümü. Telefonda en son gösterildiği değerle aynı değilse tanıtım bir kez çıkıyor;
+/// salt bir "gösterildi" bayrağı değil, ki hareketler değiştiğinde yeniden gösterilebilsin.
 ///
-/// SÜRÜM NUMARASINA BAĞLI, salt bir "gösterildi" bayrağına değil: hareketler değiştiğinde yapı
-/// numarası artırılınca tanıtım bir kez daha çıkıyor. Bugün 1'de duruyor, yani yeniden kurmak
-/// tanıtımı geri getirmiyor — uygulama silinmediği sürece bir kez görünüyor.
-func currentBuildTag() -> String {
-    let info = Bundle.main.infoDictionary
-    let short = info?["CFBundleShortVersionString"] as? String ?? "?"
-    let build = info?["CFBundleVersion"] as? String ?? "?"
-    return "\(short)+\(build)"
-}
+/// NEDEN UYGULAMA SÜRÜMÜNDEN AYRI: eskiden "CFBundleShortVersionString+CFBundleVersion"dı, yani
+/// her sürüm artışı tanıtımı herkese yeniden gösterirdi; hareketler ise çoğu sürümde değişmiyor.
+/// Artık yalnızca hareketler değiştiğinde ELLE değiştiriliyor.
+///
+/// NEDEN "1.0+1": eski etiketin 1.0 / yapı 1'deki değeri ve telefonlarda zaten bu yazılı. Başka
+/// bir değer, tanıtımı görmüş herkese onu bir kez daha gösterirdi. Android ikizi `TOUR_REVISION`
+/// (OrientationOverlay.kt): iki değer aynı kalmalı.
+let tourRevision = "1.0+1"

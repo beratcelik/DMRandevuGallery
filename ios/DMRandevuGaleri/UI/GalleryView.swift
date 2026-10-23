@@ -19,8 +19,7 @@ struct GalleryView: View {
     /// Tanıtım kurulum başına bir kez. Karar AÇILIŞTA bir kez okunuyor: her yeniden
     /// çizimde ayarları okumak, "Anladım"a basıldıktan sonra aynı karede bayrağın
     /// yazılmasıyla okunması arasında yarış açardı.
-    @State private var showTour = ServiceLocator.settings.tourShownBuild != currentBuildTag()
-    private let buildTag = currentBuildTag()
+    @State private var showTour = ServiceLocator.settings.tourShownBuild != tourRevision
 
     /// Ayarlar sayfası açık mı. Durumu burada, çünkü sayfalar yeniden kuruluyor.
     @State private var showSettings = false
@@ -85,7 +84,7 @@ struct GalleryView: View {
             // ihbar hesabı olup olmadığı ancak hesap yüklendikten sonra belli.
             if showTour && !model.items.isEmpty {
                 OrientationOverlay(ihbarEnabled: model.ihbarAvailable) {
-                    ServiceLocator.settings.tourShownBuild = buildTag
+                    ServiceLocator.settings.tourShownBuild = tourRevision
                     showTour = false
                 }
             }

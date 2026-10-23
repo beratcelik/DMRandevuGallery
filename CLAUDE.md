@@ -100,7 +100,7 @@ The paths below are Android paths. iOS mirrors them under `ios/DMRandevuGaleri/`
 
 - media3 is pinned to 1.8.x because `ExperimentalFrameExtractor`, which the face scan uses, was removed in 1.10.
 - The Android build is `arm64-v8a` only.
-- The first-run tour is keyed on the build number (`tour_shown_build`, raised with `versionCode` / `CURRENT_PROJECT_VERSION`), not a boolean.
+- The first-run tour shows again only when `TOUR_REVISION` / `tourRevision` changes (stored as `tour_shown_build`), not on version bumps. Change it only when the gestures change.
 - Use locale-independent case conversion on identifiers: `lowercase()` with no argument in Kotlin, `caseInsensitiveCompare` in Swift. A Turkish locale turns `I` into dotless `ı`, and the match then fails silently. `IhbarAccount` has the full story.
 
 ## Conventions

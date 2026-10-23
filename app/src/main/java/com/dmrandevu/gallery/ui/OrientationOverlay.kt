@@ -1,6 +1,5 @@
 package com.dmrandevu.gallery.ui
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
@@ -213,13 +212,16 @@ private fun TourRow(icon: ImageVector, title: Int, detail: Int) {
 }
 
 /**
- * Tanıtımın gösterildiği yapıyı adlandıran etiket ("1.0+1").
+ * Tanıtımın sürümü. Telefonda en son gösterildiği değerle aynı değilse tanıtım bir kez çıkıyor;
+ * salt bir "gösterildi" bayrağı değil, ki hareketler değiştiğinde yeniden gösterilebilsin.
  *
- * SÜRÜM KODUNA BAĞLI, salt bir "gösterildi" bayrağına değil: hareketler değiştiğinde
- * versionCode artırılınca tanıtım bir kez daha çıkıyor. Bugün kod 1'de duruyor, yani
- * `adb install -r` tanıtımı yeniden açmıyor — ayarlar silinmediği sürece bir kez görünüyor.
+ * NEDEN UYGULAMA SÜRÜMÜNDEN AYRI: eskiden "versionName+versionCode"ydı, yani her sürüm artışı
+ * tanıtımı herkese yeniden gösterirdi — oysa Google Play her yüklemede daha büyük bir versionCode
+ * istiyor ve hareketler çoğu sürümde değişmiyor. Artık yalnızca hareketler değiştiğinde ELLE
+ * değiştiriliyor.
+ *
+ * NEDEN "1.0+1": eski etiketin 1.0 / yapı 1'deki değeri ve telefonlarda zaten bu yazılı. Başka
+ * bir değer, tanıtımı görmüş herkese onu bir kez daha gösterirdi. iOS ikizi `tourRevision`
+ * (OrientationOverlay.swift): iki değer aynı kalmalı.
  */
-fun buildTag(context: Context): String = runCatching {
-    val info = context.packageManager.getPackageInfo(context.packageName, 0)
-    "${info.versionName}+${info.longVersionCode}"
-}.getOrDefault("bilinmiyor")
+const val TOUR_REVISION = "1.0+1"

@@ -163,10 +163,12 @@ MP4/MOV/WebM, and on iOS no larger than 50 MB.
 ## Orientation
 
 The first launch of an install shows a full-screen tour of the gestures and the buttons,
-dismissed with "Anladım". The flag is the **build** it was last shown for
-(`tour_shown_build`, the same key string on both platforms), not a plain boolean: raising
-`versionCode` / `CURRENT_PROJECT_VERSION` when the gestures change shows it once more. Both are
-still at 1, so reinstalling over an existing install does not bring it back.
+dismissed with "Anladım". The flag is the **tour revision** it was last shown for
+(`tour_shown_build`, the same key string on both platforms), not a plain boolean: changing
+`TOUR_REVISION` (Android) / `tourRevision` (iOS) when the gestures change shows it once more.
+It is deliberately not the app version, which Play makes us raise for every upload; it stays at
+`"1.0+1"`, the value phones stored when it was still the version, so updating the app does not
+bring the tour back.
 
 The tour drops the swipe-left / swipe-right rows on accounts where the decision axis is inert,
 because teaching a gesture that does nothing is worse than teaching nothing.

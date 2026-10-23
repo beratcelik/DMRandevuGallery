@@ -93,7 +93,7 @@ fun GalleryScreen(
     // Tanıtım kurulum başına bir kez. Karar AÇILIŞTA bir kez okunuyor: her yeniden
     // birleşimde ayarları okumak, "Anladım"a basıldıktan sonra aynı karede bayrağın
     // yazılmasıyla okunması arasında yarış açardı.
-    val tag = remember(context) { buildTag(context) }
+    val tag = TOUR_REVISION
     var showTour by rememberSaveable(tag) {
         mutableStateOf(ServiceLocator.settings.tourShownBuild != tag)
     }
