@@ -44,9 +44,9 @@ way when they are redone.
    - *App access*: login is required. Give Play a test username/password **for a Cheto account that
      holds no real customer data** (only needed for review, not for internal testing).
    - *Data safety*: the app sends the user's login and the videos it shows to the Cheto server
-     (dmrandevu.com); it keeps the session cookie on the device, not the password. Nothing is sold or
+     (cheto.ai, the same server as dmrandevu.com); it keeps the session cookie on the device, not the password. Nothing is sold or
      shared for ads.
-   - *Privacy policy URL*: `https://dmrandevu.com/privacy`
+   - *Privacy policy URL*: `https://cheto.ai/privacy`
    - *Content rating*, *Target audience* (18+), *News app* (no), *Ads* (no).
 5. Roll out. Testers install from the opt-in link shown under *Testers*.
 

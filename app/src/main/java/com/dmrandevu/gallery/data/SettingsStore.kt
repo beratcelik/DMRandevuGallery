@@ -79,7 +79,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit { putString(KEY_TOUR_BUILD, value) }
 
     companion object {
-        const val DEFAULT_BASE_URL = "https://dmrandevu.com"
+        const val DEFAULT_BASE_URL = "https://cheto.ai"
         // BOŞ: her kişi kendi hesabını yazıyor. Eskiden "trafik_cezasi" geliyordu ve başka hesabın
         // kullanıcısı, yanlış hesabı fark etmeden "hesap bulunamadı" ile karşılaşıyordu.
         const val DEFAULT_IG_ACCOUNT = ""

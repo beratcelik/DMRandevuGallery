@@ -3,7 +3,7 @@ import Foundation
 /// Remembers everything needed to log back in except the password.
 final class SettingsStore {
 
-    static let defaultBaseURL = "https://dmrandevu.com"
+    static let defaultBaseURL = "https://cheto.ai"
     // BOŞ: her kişi kendi hesabını yazıyor. Eskiden "trafik_cezasi" geliyordu ve başka hesabın
     // kullanıcısı, yanlış hesabı fark etmeden "hesap bulunamadı" ile karşılaşıyordu.
     static let defaultIGAccount = ""
