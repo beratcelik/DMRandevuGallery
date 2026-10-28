@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -43,7 +44,16 @@ import kotlinx.coroutines.launch
 private const val MIN_PASSWORD_LENGTH = 10
 
 /**
- * Ayarlar: hesap bilgisi, şifre değiştirme, çıkış ve sürüm.
+ * Mağaza kayıtlarındaki (Play, App Store) gizlilik politikasının aynısı.
+ *
+ * NEDEN SABİT, sunucu adresinden türetilmiyor: giriş ekranında sunucu adresi değiştirilebiliyor
+ * (yerel deneme sunucusu gibi), ama politika her zaman şirketinki. İki mağaza da politikanın
+ * uygulamanın İÇİNDEN de açılabilmesini istiyor; yoksa inceleme reddediyor.
+ */
+private const val PRIVACY_POLICY_URL = "https://cheto.ai/privacy"
+
+/**
+ * Ayarlar: hesap bilgisi, şifre değiştirme, çıkış, gizlilik politikası ve sürüm.
  *
  * NEDEN ALT SAYFA: uygulamanın başka hiçbir ayar ekranı yok, ve tek amacı videoları gezmek olan
  * bir ekranın üstüne tam sayfa bir ekran eklemek gezinmeyi bozardı. Başlıktaki dişli açıyor.
@@ -64,6 +74,7 @@ fun SettingsSheet(
     onSessionLost: () -> Unit
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val settings = ServiceLocator.settings
@@ -200,6 +211,13 @@ fun SettingsSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.logout))
+            }
+
+            TextButton(
+                onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) },
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text(stringResource(R.string.settings_privacy))
             }
 
             if (version.isNotEmpty()) {

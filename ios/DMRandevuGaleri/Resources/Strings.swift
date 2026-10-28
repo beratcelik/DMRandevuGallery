@@ -125,6 +125,7 @@ enum Strings {
     static let logout = "Çıkış yap"
     static let settingsLogoutTitle = "Çıkış yapılsın mı?"
     static let settingsLogoutBody = "Bu telefondaki oturum kapanır. Başka bir hesapla girebilirsin."
+    static let settingsPrivacy = "Gizlilik politikası"
 
     // MARK: - Kaydırarak karar
     //

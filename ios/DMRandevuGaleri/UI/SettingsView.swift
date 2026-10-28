@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Ayarlar: hesap bilgisi, şifre değiştirme, çıkış ve sürüm.
+/// Ayarlar: hesap bilgisi, şifre değiştirme, çıkış, gizlilik politikası ve sürüm.
 ///
 /// NEDEN ALT SAYFA: uygulamanın başka hiçbir ayar ekranı yok ve tek amacı videoları gezmek olan bir
 /// ekranın üstüne tam sayfa bir ekran eklemek gezinmeyi bozardı. Sağ üstteki dişli açıyor.
@@ -18,6 +18,13 @@ struct SettingsView: View {
 
     /// Yeni şifrenin asgari uzunluğu; sunucudaki kuralın (AdminCredentialsManager) aynısı.
     private static let minPasswordLength = 10
+
+    /// Mağaza kayıtlarındaki (App Store, Play) gizlilik politikasının aynısı.
+    ///
+    /// NEDEN SABİT, sunucu adresinden türetilmiyor: giriş ekranında sunucu adresi değiştirilebiliyor
+    /// (yerel deneme sunucusu gibi), ama politika her zaman şirketinki. İki mağaza da politikanın
+    /// uygulamanın İÇİNDEN de açılabilmesini istiyor; yoksa inceleme reddediyor.
+    private static let privacyPolicyURL = URL(string: "https://cheto.ai/privacy")!
 
     private let settings = ServiceLocator.settings!
     private let repository = ServiceLocator.repository!
@@ -94,6 +101,11 @@ struct SettingsView: View {
                 Section {
                     Button(Strings.logout, role: .destructive) { confirmLogout = true }
                         .accessibilityIdentifier("logoutButton")
+                }
+
+                Section {
+                    Link(Strings.settingsPrivacy, destination: Self.privacyPolicyURL)
+                        .accessibilityIdentifier("privacyPolicyLink")
                 }
 
                 if !version.isEmpty {

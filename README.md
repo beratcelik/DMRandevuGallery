@@ -70,7 +70,8 @@ rest of the panel is closed. Typing another account on the login screen therefor
 "account not found".
 
 The gear in the top-right corner opens **Settings**: who is signed in, change your own password,
-sign out, and the version. Changing the password needs the current one; it never leaves the phone
+sign out, the privacy policy (`https://cheto.ai/privacy`, the same page as the store listings; Play
+and the App Store both require it to be reachable from inside the app), and the version. Changing the password needs the current one; it never leaves the phone
 except to the server, and the app stores no password. Signing out closes the server session and clears
 everything of the previous person (loaded conversations included), so the next sign-in, as anyone,
 starts clean. A wrong current password is shown on the form; it does not log you out.

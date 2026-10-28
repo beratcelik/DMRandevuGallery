@@ -40,6 +40,7 @@
     <string name="settings_password_failed">Şifre değiştirilemedi</string>
     <string name="settings_logout_title">Çıkış yapılsın mı?</string>
     <string name="settings_logout_body">Bu telefondaki oturum kapanır. Başka bir hesapla girebilirsin.</string>
+    <string name="settings_privacy">Gizlilik politikası</string>
 
     <!-- Actions -->
     <string name="download">İndir</string>
