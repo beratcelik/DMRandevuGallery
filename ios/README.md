@@ -30,8 +30,8 @@ it the script has no sources; without the script the project has no whisper fram
 build stops at linking.
 
 Then, in Signing & Capabilities, **set your own team and change the bundle identifier**.
-`com.dmrandevu.gallery` is registered to the team that built this, and Apple will not let a
-second team claim the same identifier — automatic signing fails with no useful explanation
+`ai.cheto.gallery` is registered to the team that builds this (`HAZ2FMYWDT`), and Apple will not
+let a second team claim the same identifier — automatic signing fails with no useful explanation
 until you do. Anything unique works, e.g. `com.<you>.dmrandevugaleri`.
 
 A free Apple ID is enough to run it on your own phone; the profile lasts seven days and the
@@ -39,6 +39,29 @@ first launch needs the certificate trusted once under Settings → General → V
 Management.
 
 The Core ML models are committed and need nothing.
+
+## Release build (App Store)
+
+The App Store app is `ai.cheto.gallery` on team `HAZ2FMYWDT`. Raise `CURRENT_PROJECT_VERSION`
+for every upload (App Store Connect refuses a repeat), then archive and upload:
+
+```sh
+xcodebuild archive -project ios/DMRandevuGaleri.xcodeproj -scheme DMRandevuGaleri \
+  -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath build/Cheto.xcarchive -allowProvisioningUpdates
+xcodebuild -exportArchive -archivePath build/Cheto.xcarchive \
+  -exportOptionsPlist ExportOptions.plist -exportPath build -allowProvisioningUpdates
+```
+
+with an `ExportOptions.plist` of `method` = `app-store-connect`, `destination` = `upload`,
+`teamID` = `HAZ2FMYWDT`. Xcode Organizer's Distribute App does the same. Xcode must be signed in
+to that team's Apple ID.
+
+`Info.plist` declares the HTTPS-only encryption answer, and `PrivacyInfo.xcprivacy` declares the
+required-reason APIs; App Store Connect refuses an upload that calls one without a reason, so
+add it there when new code reads `UserDefaults`, file dates, disk space or boot time. Store
+texts, the privacy answers and the App Review caveats (a reviewer's swipe deletes customers) are
+in `store/ios/`.
 
 ## How it maps to the Android build
 

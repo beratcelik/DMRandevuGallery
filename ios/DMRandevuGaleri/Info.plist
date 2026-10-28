@@ -22,6 +22,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- The only encryption is the HTTPS that URLSession does, which is exempt. Saying so here
+	     answers App Store Connect's export-compliance question once instead of on every build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 
 	<!-- Saving a finished video is the whole point of the İndir and Reels buttons. -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
